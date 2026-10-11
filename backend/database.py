@@ -177,3 +177,31 @@ def update_candidate_status(candidate_id: int, status: str) -> Optional[Dict[str
     cursor.close()
     conn.close()
     return get_candidate_by_id(candidate_id)
+
+def delete_candidate(candidate_id: int) -> bool:
+    """Delete candidate/driver completely from database."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM candidates WHERE id = %s RETURNING id;", (candidate_id,))
+    deleted = cursor.fetchone()
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return bool(deleted)
+
+def get_candidate_by_phone(phone: str) -> Optional[Dict[str, Any]]:
+    """Get candidate by formatted or raw phone number."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    # Normalize phone: extract numbers
+    clean_phone = "".join(filter(str.isdigit, phone))
+    cursor.execute("""
+        SELECT * FROM candidates 
+        WHERE regexp_replace(phone, '[^0-9]', '', 'g') = %s 
+        OR phone = %s;
+    """, (clean_phone, phone))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return format_row(row) if row else None
+

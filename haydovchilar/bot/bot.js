@@ -204,9 +204,12 @@ bot.start(async (ctx) => {
     return;
   }
 
-  // Not registered
+  // Not registered or deleted: reset chat menu button and remove keyboard
+  await ctx.setChatMenuButton({ type: 'default' }).catch(() => {});
+
   const startMsg = await ctx.reply("Haydovchi tizimiga xush kelibsiz.", {
     reply_markup: {
+      remove_keyboard: true,
       inline_keyboard: [
         [{ text: "Haydovchi bo'lish", callback_data: "start_registration" }]
       ]
@@ -295,12 +298,9 @@ bot.launch().then(async () => {
   try {
     await bot.telegram.setChatMenuButton({
       menuButton: {
-        type: 'web_app',
-        text: "Ilovani ochish",
-        web_app: { url: WEB_APP_URL }
+        type: 'default'
       }
     });
-    console.log("Global chat menu button o'rnatildi (Ilovani ochish)!");
   } catch(e) {
     console.error("setChatMenuButton error:", e);
   }

@@ -10,12 +10,15 @@ from database import (
     get_candidates,
     get_candidate_by_id,
     get_candidate_by_telegram_id,
+    get_candidate_by_phone,
     save_candidate,
-    update_candidate_status
+    update_candidate_status,
+    delete_candidate
 )
 from telegram_service import (
     send_approval_message,
-    send_rejection_message
+    send_rejection_message,
+    reset_driver_bot_state
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -157,3 +160,35 @@ async def reject_candidate(candidate_id: int):
 def list_approved_drivers():
     """List all approved drivers."""
     return get_candidates(status="approved")
+
+@app.delete("/api/drivers/{driver_id}")
+async def remove_driver(driver_id: int):
+    """Delete driver from system, reset their Telegram bot state, and kick out from Mini App."""
+    candidate = get_candidate_by_id(driver_id)
+    if not candidate:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
+    
+    # 1. Reset driver bot state in Telegram (removes menu button, clears recent messages)
+    telegram_id = candidate.get("telegram_id")
+    pending_msg_id = candidate.get("pending_message_id")
+    if telegram_id:
+        await reset_driver_bot_state(telegram_id, pending_msg_id)
+        
+    # 2. Delete driver from database
+    success = delete_candidate(driver_id)
+    logger.info(f"Driver {driver_id} ({candidate['name']} {candidate['surname']}) deleted from database.")
+    return {"success": success, "deleted_id": driver_id}
+
+@app.get("/api/drivers/check")
+def check_driver_status(phone: Optional[str] = None, telegram_id: Optional[int] = None):
+    """Check if driver is currently approved in the system (used by Mini App)."""
+    candidate = None
+    if telegram_id:
+        candidate = get_candidate_by_telegram_id(telegram_id)
+    elif phone:
+        candidate = get_candidate_by_phone(phone)
+    
+    if not candidate or candidate.get("status") != "approved":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver is not approved or not found")
+    return {"status": "approved", "driver": candidate}
+

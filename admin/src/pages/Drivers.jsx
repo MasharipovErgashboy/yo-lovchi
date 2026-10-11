@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { User, Activity, MapPin, X, Route, Clock, Car, Loader2, RefreshCw } from 'lucide-react';
+import { User, Activity, MapPin, X, Route, Clock, Car, Loader2, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import './PagesCommon.css';
 
 const BACKEND_URL = "http://localhost:8000";
 
 export default function Drivers() {
   const [selectedDriver, setSelectedDriver] = useState(null);
+  const [driverToDelete, setDriverToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,6 +33,27 @@ export default function Drivers() {
       console.error("Haydovchilarni yuklashda xatolik:", e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteDriver = async () => {
+    if (!driverToDelete) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/drivers/${driverToDelete.id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setDriverToDelete(null);
+        await fetchApproved();
+      } else {
+        alert("Haydovchini o'chirishda xatolik yuz berdi!");
+      }
+    } catch (err) {
+      console.error("Delete driver error:", err);
+      alert("Server bilan bog'lanishda xatolik yuz berdi!");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -108,12 +131,21 @@ export default function Drivers() {
                       </div>
                     </td>
                     <td>
-                      <button 
-                        className="action-btn"
-                        onClick={() => setSelectedDriver(driver)}
-                      >
-                        <Activity size={16} /> Faoliyati
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button 
+                          className="action-btn"
+                          onClick={() => setSelectedDriver(driver)}
+                        >
+                          <Activity size={16} /> Faoliyati
+                        </button>
+                        <button 
+                          className="action-btn danger-btn"
+                          onClick={() => setDriverToDelete(driver)}
+                          title="Haydovchini tizimdan o'chirish"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -178,6 +210,52 @@ export default function Drivers() {
           </div>
         </div>
       )}
+
+      {/* O'chirishni Tasdiqlash Modali */}
+      {driverToDelete && (
+        <div className="modal-overlay" onClick={() => !isDeleting && setDriverToDelete(null)}>
+          <div className="modal-content glass-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ef4444' }}>
+                <AlertTriangle size={20} /> Haydovchini o'chirish
+              </h3>
+              <button className="close-btn" onClick={() => !isDeleting && setDriverToDelete(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <p style={{ color: 'var(--text-main)', fontSize: '15px', lineHeight: '1.6', margin: 0 }}>
+                Haqiqatan ham <strong>{driverToDelete.name}</strong> ({driverToDelete.phone})ni tizimdan o'chirmoqchimisiz?
+              </p>
+              <div style={{ background: 'rgba(239, 68, 68, 0.08)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#f87171', fontSize: '13px', lineHeight: '1.5' }}>
+                ⚠️ Haydovchi mini ilovadan avtomatik chiqariladi, Telegram botidagi "Ilovani ochish" tugmasi olib tashlanadi va bot boshlang'ich ro'yxatdan o'tish holatiga qaytariladi.
+              </div>
+            </div>
+            <div className="modal-footer" style={{ padding: '16px 24px' }}>
+              <button 
+                type="button"
+                className="action-btn"
+                style={{ flex: 1, justifyContent: 'center' }}
+                onClick={() => setDriverToDelete(null)}
+                disabled={isDeleting}
+              >
+                Bekor qilish
+              </button>
+              <button 
+                type="button"
+                className="btn-reject"
+                style={{ flex: 1, justifyContent: 'center' }}
+                onClick={handleDeleteDriver}
+                disabled={isDeleting}
+              >
+                {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                {isDeleting ? "O'chirilmoqda..." : "Ha, o'chirish"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

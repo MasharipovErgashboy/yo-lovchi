@@ -108,3 +108,50 @@ async def send_rejection_message(
     except Exception as e:
         logger.error(f"Error sending Telegram rejection message: {e}")
         return False
+
+async def reset_driver_bot_state(
+    telegram_id: int,
+    pending_message_id: int = None
+) -> bool:
+    """Reset driver bot state: removes chat menu button, clears messages, and shows initial registration prompt."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # 1. Reset Chat Menu Button to default (removes 'Ilovani ochish' button)
+            await client.post(
+                f"{BASE_URL}/setChatMenuButton",
+                json={
+                    "chat_id": telegram_id,
+                    "menu_button": {"type": "default"}
+                }
+            )
+
+            # 2. Safely delete messages in chat history (around last known message ID)
+            if pending_message_id:
+                start_id = max(1, pending_message_id - 10)
+                end_id = pending_message_id + 30
+                for mid in range(start_id, end_id):
+                    try:
+                        await client.post(
+                            f"{BASE_URL}/deleteMessage",
+                            json={"chat_id": telegram_id, "message_id": mid}
+                        )
+                    except Exception:
+                        pass
+
+            # 3. Send fresh initial welcome message with 'Haydovchi bo'lish' button
+            payload = {
+                "chat_id": telegram_id,
+                "text": "Haydovchi tizimiga xush kelibsiz.",
+                "reply_markup": {
+                    "inline_keyboard": [
+                        [{"text": "Haydovchi bo'lish", "callback_data": "start_registration"}]
+                    ]
+                }
+            }
+            res = await client.post(f"{BASE_URL}/sendMessage", json=payload)
+            data = res.json()
+            return data.get("ok", False)
+    except Exception as e:
+        logger.error(f"Error resetting driver bot state for {telegram_id}: {e}")
+        return False
+
