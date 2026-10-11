@@ -21,12 +21,31 @@ function App() {
       try {
         tg.ready();
         tg.expand();
-        if (tg.disableVerticalSwipes) {
+        if (typeof tg.requestFullscreen === 'function') {
+          tg.requestFullscreen();
+        }
+        if (typeof tg.disableVerticalSwipes === 'function') {
           tg.disableVerticalSwipes();
+        }
+        if (typeof tg.setHeaderColor === 'function') {
+          tg.setHeaderColor('#F0F4F8');
+        }
+        if (typeof tg.setBackgroundColor === 'function') {
+          tg.setBackgroundColor('#F0F4F8');
         }
       } catch (e) {
         console.error("Telegram WebApp init error:", e);
       }
+
+      const enterFs = () => {
+        try {
+          if (typeof tg.requestFullscreen === 'function' && !tg.isFullscreen) {
+            tg.requestFullscreen();
+          }
+        } catch (e) {}
+      };
+      window.addEventListener('touchstart', enterFs, { once: true, passive: true });
+      window.addEventListener('click', enterFs, { once: true, passive: true });
     }
   }, []);
 
@@ -40,7 +59,7 @@ function App() {
 
     const checkStatus = async () => {
       try {
-        let url = 'http://localhost:8000/api/drivers/check?';
+        let url = '/api/drivers/check?';
         if (phone) url += `phone=${encodeURIComponent(phone)}`;
         else if (tgUserId) url += `telegram_id=${tgUserId}`;
 
