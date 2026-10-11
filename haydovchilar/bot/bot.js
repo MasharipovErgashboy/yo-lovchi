@@ -6,7 +6,7 @@ const bot = new Telegraf(BOT_TOKEN);
 // In-memory mock database for drivers
 const driversDb = new Map(); // userId -> { name, surname, phone, status, pendingMessageId }
 
-const WEB_APP_URL = "https://hxcnz-82-215-96-37.free.pinggy.net";
+const WEB_APP_URL = "https://metallica-graduate-kid-bind.trycloudflare.com";
 const BACKEND_URL = "http://localhost:8000";
 
 // Helper to safely delete messages
