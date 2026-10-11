@@ -1,0 +1,72 @@
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  --bg-color: #F3F4F6;
+  --white: #FFFFFF;
+  --text-primary: #111827;
+  --text-secondary: #6B7280;
+  --border-color: #E5E7EB;
+  
+  /* Brand colors */
+  --blue-primary: #0066FF;
+  --blue-light: #E6F0FF;
+  
+  /* Route colors */
+  --route-blue: #0066FF;
+  --route-green: #22C55E;
+  --route-orange: #F97316;
+  --route-purple: #A855F7;
+  --route-pink: #EC4899;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  touch-action: none;
+}
+
+#root {
+  max-width: 480px;
+  margin: 0 auto;
+  background-color: var(--bg-color);
+  height: 100vh;
+  width: 100%;
+  position: relative;
+  box-shadow: 0 0 20px rgba(0,0,0,0.05);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+/* Base utility classes */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.w-full { width: 100%; }
+
+/* Scrollbar styling for a cleaner app feel */
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
