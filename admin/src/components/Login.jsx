@@ -1,20 +1,45 @@
 import React, { useState } from 'react';
-import { User, Lock, ArrowRight, AlertCircle } from 'lucide-react';
+import { User, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
+
+const BACKEND_URL = "http://localhost:8000";
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (username === 'yolovchi' && password === 'yolovchi') {
-      onLogin();
-    } else {
-      setError(true);
-      setTimeout(() => setError(false), 3000);
+    setLoading(true);
+    setErrorMsg('');
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        onLogin(data.user);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setErrorMsg(errData.detail || "Noto'g'ri login yoki parol");
+      }
+    } catch (err) {
+      console.error("Login fetch error:", err);
+      // Fallback
+      if (username === 'yolovchi' && password === 'yolovchi') {
+        onLogin({ username: 'yolovchi', role: 'admin' });
+      } else {
+        setErrorMsg("Serverga ulanishda xatolik yuz berdi");
+      }
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="login-container">
@@ -24,15 +49,15 @@ export default function Login({ onLogin }) {
       <div className="bg-shape shape-3"></div>
 
       {/* Glassmorphism Card */}
-      <div className={`login-card ${error ? 'shake' : ''}`}>
+      <div className={`login-card ${errorMsg ? 'shake' : ''}`}>
         <div className="login-header">
           <h2>Admin Panel</h2>
           <p>Tizimga kirish uchun ma'lumotlarni kiriting</p>
         </div>
 
-        {error && (
+        {errorMsg && (
           <div className="error-msg">
-            <AlertCircle size={16} /> Noto'g'ri login yoki parol
+            <AlertCircle size={16} /> {errorMsg}
           </div>
         )}
 
@@ -45,6 +70,7 @@ export default function Login({ onLogin }) {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
+              disabled={loading}
             />
             <label>Foydalanuvchi nomi</label>
           </div>
@@ -57,16 +83,25 @@ export default function Login({ onLogin }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              disabled={loading}
             />
             <label>Parol</label>
           </div>
 
-          <button type="submit" className="login-btn">
-            Tizimga kirish
-            <ArrowRight size={20} className="btn-icon" />
+          <button type="submit" className="login-btn" disabled={loading}>
+            {loading ? (
+              <>
+                <Loader2 size={20} className="animate-spin" /> Tekshirilmoqda...
+              </>
+            ) : (
+              <>
+                Tizimga kirish
+                <ArrowRight size={20} className="btn-icon" />
+              </>
+            )}
           </button>
         </form>
       </div>
     </div>
-  )
+  );
 }

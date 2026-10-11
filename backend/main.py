@@ -6,6 +6,7 @@ import logging
 
 from database import (
     init_db,
+    authenticate_user,
     get_candidates,
     get_candidate_by_id,
     get_candidate_by_telegram_id,
@@ -37,6 +38,10 @@ def on_startup():
     logger.info("Database initialized successfully.")
 
 # Pydantic schemas
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
 class CandidateCreate(BaseModel):
     telegram_id: int
     name: str
@@ -58,6 +63,21 @@ class CandidateResponse(BaseModel):
 @app.get("/api/health")
 def health_check():
     return {"status": "ok", "service": "yolovchi-backend"}
+
+@app.post("/api/auth/login")
+def login(payload: LoginRequest):
+    """Authenticate admin/superuser against PostgreSQL database."""
+    user = authenticate_user(payload.username, payload.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Noto'g'ri login yoki parol"
+        )
+    return {
+        "success": True,
+        "user": user,
+        "token": f"session_token_{user['username']}_{user['id']}"
+    }
 
 @app.get("/api/candidates")
 def list_candidates(status: Optional[str] = None):

@@ -23,9 +23,19 @@ const navItems = [
   { path: '/support', label: 'Qo\'llab-quvvatlash', icon: <Headphones size={20} /> },
 ];
 
-export default function DashboardLayout() {
+export default function DashboardLayout({ onLogout }) {
   const location = useLocation();
   const currentNav = navItems.find(item => item.path === location.pathname) || navItems[0];
+
+  const handleLogoutClick = () => {
+    if (onLogout) {
+      onLogout();
+    } else {
+      localStorage.removeItem('yolovchi_admin_logged_in');
+      localStorage.removeItem('yolovchi_admin_user');
+      window.location.href = '/login';
+    }
+  };
 
   return (
     <div className="layout-container">
@@ -51,7 +61,7 @@ export default function DashboardLayout() {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="logout-btn" onClick={() => window.location.reload()}>
+          <button className="logout-btn" onClick={handleLogoutClick}>
             <LogOut size={20} />
             <span>Tizimdan chiqish</span>
           </button>

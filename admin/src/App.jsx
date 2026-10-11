@@ -11,7 +11,24 @@ import Messages from './pages/Messages';
 import Support from './pages/Support';
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Session is saved in localStorage so refresh never logs the user out
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return localStorage.getItem('yolovchi_admin_logged_in') === 'true';
+  });
+
+  const handleLogin = (user) => {
+    localStorage.setItem('yolovchi_admin_logged_in', 'true');
+    if (user) {
+      localStorage.setItem('yolovchi_admin_user', JSON.stringify(user));
+    }
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('yolovchi_admin_logged_in');
+    localStorage.removeItem('yolovchi_admin_user');
+    setIsLoggedIn(false);
+  };
 
   return (
     <BrowserRouter>
@@ -20,7 +37,7 @@ function App() {
         <Route 
           path="/login" 
           element={
-            isLoggedIn ? <Navigate to="/" replace /> : <Login onLogin={() => setIsLoggedIn(true)} />
+            isLoggedIn ? <Navigate to="/" replace /> : <Login onLogin={handleLogin} />
           } 
         />
 
@@ -28,7 +45,7 @@ function App() {
         <Route 
           path="/" 
           element={
-            isLoggedIn ? <DashboardLayout /> : <Navigate to="/login" replace />
+            isLoggedIn ? <DashboardLayout onLogout={handleLogout} /> : <Navigate to="/login" replace />
           }
         >
           <Route index element={<Dashboard />} />
