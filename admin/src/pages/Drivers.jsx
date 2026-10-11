@@ -1,49 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { User, Activity, MapPin, X, Route, Clock } from 'lucide-react';
+import { User, Activity, MapPin, X, Route, Clock, Car, Loader2, RefreshCw } from 'lucide-react';
 import './PagesCommon.css';
 
 const BACKEND_URL = "http://localhost:8000";
 
 export default function Drivers() {
   const [selectedDriver, setSelectedDriver] = useState(null);
-  const [drivers, setDrivers] = useState([
-    { id: 1, name: 'Anvar Tursunov', phone: '+998 90 111 22 33', status: 'Online', route: '12-marshrut', startTime: '07:30', endTime: null, tripsToday: 4, tripsTotal: 1250 },
-    { id: 2, name: 'Bekzod Aliyev', phone: '+998 94 555 66 77', status: 'Offline', route: '15-marshrut', startTime: '08:00', endTime: '18:30', tripsToday: 8, tripsTotal: 840 },
-    { id: 3, name: 'Dilmurod Karim', phone: '+998 99 888 99 00', status: 'Online', route: '18-marshrut', startTime: '09:15', endTime: null, tripsToday: 6, tripsTotal: 2100 },
-    { id: 4, name: 'Hasan Hojiyev', phone: '+998 93 222 33 44', status: 'Online', route: '12-marshrut', startTime: '13:00', endTime: null, tripsToday: 2, tripsTotal: 430 },
-  ]);
+  const [drivers, setDrivers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchApproved = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/drivers`);
+      if (res.ok) {
+        const apiDrivers = await res.json();
+        const formatted = (apiDrivers || []).map(d => ({
+          id: d.id,
+          name: `${d.name} ${d.surname}`,
+          phone: d.phone,
+          status: 'Online',
+          route: 'Biriktirilmagan',
+          startTime: d.updated_at ? (d.updated_at.includes(' ') ? d.updated_at.split(' ')[1] : d.updated_at) : '08:00',
+          endTime: null,
+          tripsToday: 0,
+          tripsTotal: 0
+        }));
+        setDrivers(formatted);
+      }
+    } catch (e) {
+      console.error("Haydovchilarni yuklashda xatolik:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchApproved = async () => {
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/drivers`);
-        if (res.ok) {
-          const apiDrivers = await res.json();
-          if (apiDrivers && apiDrivers.length > 0) {
-            const formatted = apiDrivers.map(d => ({
-              id: d.id,
-              name: `${d.name} ${d.surname}`,
-              phone: d.phone,
-              status: 'Online',
-              route: 'Biriktirilmagan',
-              startTime: d.updated_at ? d.updated_at.split(' ')[1] : '08:00',
-              endTime: null,
-              tripsToday: 0,
-              tripsTotal: 0
-            }));
-            setDrivers(prev => {
-              // Combine existing demo drivers with newly approved drivers without duplicate IDs
-              const existingIds = new Set(formatted.map(f => f.id));
-              return [...formatted, ...prev.filter(p => !existingIds.has(p.id))];
-            });
-          }
-        }
-      } catch (e) {
-        console.error("Error fetching approved drivers:", e);
-      }
-    };
     fetchApproved();
-    const interval = setInterval(fetchApproved, 5000);
+    // 4 soniyada bir avtomatik yangilash (Polling)
+    const interval = setInterval(fetchApproved, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -51,7 +45,17 @@ export default function Drivers() {
     <div className="page-container">
       <div className="glass-card full-height">
         <div className="card-header">
-          <h2>Tasdiqlangan Haydovchilar</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2>Tasdiqlangan Haydovchilar</h2>
+            <button 
+              onClick={fetchApproved} 
+              className="action-btn"
+              style={{ width: '32px', height: '32px', padding: 0 }}
+              title="Yangilash"
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
           <span className="badge-count">{drivers.length} ta jami</span>
         </div>
 
@@ -67,36 +71,53 @@ export default function Drivers() {
               </tr>
             </thead>
             <tbody>
-              {drivers.map(driver => (
-                <tr key={driver.id}>
-                  <td>
-                    <div className="td-user">
-                      <div className="td-avatar"><User size={16} /></div>
-                      {driver.name}
+              {loading ? (
+                <tr>
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <Loader2 className="animate-spin" size={18} /> Yuklanmoqda...
                     </div>
-                  </td>
-                  <td>{driver.phone}</td>
-                  <td>
-                    <span className={`status-badge ${driver.status === 'Online' ? 'active' : ''}`}>
-                      {driver.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <MapPin size={14} className="text-muted" />
-                      {driver.route}
-                    </div>
-                  </td>
-                  <td>
-                    <button 
-                      className="action-btn"
-                      onClick={() => setSelectedDriver(driver)}
-                    >
-                      <Activity size={16} /> Faoliyati
-                    </button>
                   </td>
                 </tr>
-              ))}
+              ) : drivers.length === 0 ? (
+                <tr>
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                    <Car size={36} style={{ margin: '0 auto 12px', opacity: 0.3, display: 'block' }} />
+                    Hozircha tasdiqlangan haydovchilar mavjud emas.
+                  </td>
+                </tr>
+              ) : (
+                drivers.map(driver => (
+                  <tr key={driver.id}>
+                    <td>
+                      <div className="td-user">
+                        <div className="td-avatar"><User size={16} /></div>
+                        {driver.name}
+                      </div>
+                    </td>
+                    <td>{driver.phone}</td>
+                    <td>
+                      <span className={`status-badge ${driver.status === 'Online' ? 'active' : ''}`}>
+                        {driver.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <MapPin size={14} className="text-muted" />
+                        {driver.route}
+                      </div>
+                    </td>
+                    <td>
+                      <button 
+                        className="action-btn"
+                        onClick={() => setSelectedDriver(driver)}
+                      >
+                        <Activity size={16} /> Faoliyati
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -158,5 +179,5 @@ export default function Drivers() {
         </div>
       )}
     </div>
-  )
+  );
 }
