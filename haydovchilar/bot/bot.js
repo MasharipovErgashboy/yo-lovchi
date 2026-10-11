@@ -189,22 +189,14 @@ bot.start(async (ctx) => {
   if (driver && driver.status === 'approved') {
     const webAppUrl = getDriverWebAppUrl(driver);
 
-    // Set individual chat menu button next to message input
+    // Set individual chat menu button next to message input (without icon)
     await ctx.setChatMenuButton({
       type: 'web_app',
-      text: "🚗 Ilovani ochish",
+      text: "Ilovani ochish",
       web_app: { url: webAppUrl }
     }).catch(() => {});
 
-    return ctx.reply("Siz tasdiqlangan haydovchisiz! 🚗\n\nIstalgan vaqtda pastdagi yoki quyidagi tugma orqali ilovani ochishingiz mumkin.", {
-      reply_markup: {
-        keyboard: [
-          [{ text: "🚗 Ilovani ochish", web_app: { url: webAppUrl } }]
-        ],
-        resize_keyboard: true,
-        is_persistent: true
-      }
-    });
+    return ctx.reply("Siz tasdiqlangan haydovchisiz! Haydovchi tizimi faol.\n\nIstalgan vaqtda pastki chat menyusidagi «Ilovani ochish» tugmasi orqali ilovani ochishingiz mumkin.", Markup.removeKeyboard());
   }
 
   if (driver && driver.status === 'pending') {
@@ -244,19 +236,11 @@ bot.on('text', async (ctx, next) => {
         const webAppUrl = getDriverWebAppUrl(driver);
         await ctx.setChatMenuButton({
           type: 'web_app',
-          text: "🚗 Ilovani ochish",
+          text: "Ilovani ochish",
           web_app: { url: webAppUrl }
         }).catch(() => {});
 
-        return ctx.reply("Haydovchi tizimi faol. 🚗 Ilovani ochish tugmasini bosing:", {
-          reply_markup: {
-            keyboard: [
-              [{ text: "🚗 Ilovani ochish", web_app: { url: webAppUrl } }]
-            ],
-            resize_keyboard: true,
-            is_persistent: true
-          }
-        });
+        return ctx.reply("Haydovchi tizimi faol.\n\nIlovani ochish uchun pastki chat menyusidagi «Ilovani ochish» tugmasini bosing.", Markup.removeKeyboard());
       }
     }
   } catch (e) {}
@@ -288,29 +272,21 @@ bot.command('approve', async (ctx) => {
   driver.status = 'approved';
   const webAppUrl = getDriverWebAppUrl(driver);
 
-  // Set chat menu button
+  // Set chat menu button (no icon)
   await bot.telegram.setChatMenuButton({
     chatId: targetId,
     menuButton: {
       type: 'web_app',
-      text: "🚗 Ilovani ochish",
+      text: "Ilovani ochish",
       web_app: { url: webAppUrl }
     }
   }).catch(() => {});
 
-  // Send notification to the driver
+  // Send single combined notification to the driver
   await bot.telegram.sendMessage(
     targetId,
-    "🎉 Tabriklaymiz!\n\nSiz haydovchilikka qabul qilindingiz.\n\nIshni boshlash uchun ilovaga kiring va joylashuvingizni yoqing.",
-    {
-      reply_markup: {
-        keyboard: [
-          [{ text: "🚗 Ilovani ochish", web_app: { url: webAppUrl } }]
-        ],
-        resize_keyboard: true,
-        is_persistent: true
-      }
-    }
+    "🎉 Tabriklaymiz!\n\nSiz haydovchilikka qabul qilindingiz. Haydovchi tizimi faol!\n\nIshni boshlash uchun ilovaga kiring va joylashuvingizni yoqing.\nIstalgan vaqtda pastki chat menyusidagi «Ilovani ochish» tugmasi orqali ilovani to'g'ridan-to'g'ri ochishingiz mumkin.",
+    Markup.removeKeyboard()
   ).catch(err => console.error("Could not notify driver:", err));
 });
 
@@ -320,11 +296,11 @@ bot.launch().then(async () => {
     await bot.telegram.setChatMenuButton({
       menuButton: {
         type: 'web_app',
-        text: "🚗 Ilovani ochish",
+        text: "Ilovani ochish",
         web_app: { url: WEB_APP_URL }
       }
     });
-    console.log("Global chat menu button o'rnatildi!");
+    console.log("Global chat menu button o'rnatildi (Ilovani ochish)!");
   } catch(e) {
     console.error("setChatMenuButton error:", e);
   }

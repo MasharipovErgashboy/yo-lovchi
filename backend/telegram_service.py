@@ -42,42 +42,37 @@ async def send_approval_message(
 
     text = (
         "🎉 Tabriklaymiz!\n\n"
-        "Siz haydovchilikka qabul qilindingiz.\n\n"
-        "Ishni boshlash uchun ilovaga kiring va joylashuvingizni yoqing."
+        "Siz haydovchilikka qabul qilindingiz. Haydovchi tizimi faol!\n\n"
+        "Ishni boshlash uchun ilovaga kiring va joylashuvingizni yoqing.\n"
+        "Istalgan vaqtda pastki chat menyusidagi «Ilovani ochish» tugmasi orqali ilovani to'g'ridan-to'g'ri ochishingiz mumkin."
     )
-
-    payload = {
-        "chat_id": telegram_id,
-        "text": text,
-        "reply_markup": {
-            "inline_keyboard": [
-                [
-                    {
-                        "text": "🚗 Ilovani ochish",
-                        "web_app": {"url": full_url}
-                    }
-                ]
-            ]
-        }
-    }
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # 1. Set Chat Menu Button permanently for driver
+            # 1. Set Chat Menu Button permanently for driver (no icon)
             await client.post(
                 f"{BASE_URL}/setChatMenuButton",
                 json={
                     "chat_id": telegram_id,
                     "menu_button": {
                         "type": "web_app",
-                        "text": "🚗 Ilovani ochish",
+                        "text": "Ilovani ochish",
                         "web_app": {"url": full_url}
                     }
                 }
             )
 
-            # 2. Send approval message with inline button
-            res = await client.post(f"{BASE_URL}/sendMessage", json=payload)
+            # 2. Send single combined approval message without inline button (button is in chat menu)
+            res = await client.post(
+                f"{BASE_URL}/sendMessage",
+                json={
+                    "chat_id": telegram_id,
+                    "text": text,
+                    "reply_markup": {
+                        "remove_keyboard": True
+                    }
+                }
+            )
             data = res.json()
             if not data.get("ok"):
                 logger.error(f"Telegram API error: {data}")
