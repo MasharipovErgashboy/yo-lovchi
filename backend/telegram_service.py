@@ -63,6 +63,20 @@ async def send_approval_message(
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            # 1. Set Chat Menu Button permanently for driver
+            await client.post(
+                f"{BASE_URL}/setChatMenuButton",
+                json={
+                    "chat_id": telegram_id,
+                    "menu_button": {
+                        "type": "web_app",
+                        "text": "🚗 Ilovani ochish",
+                        "web_app": {"url": full_url}
+                    }
+                }
+            )
+
+            # 2. Send approval message with inline button
             res = await client.post(f"{BASE_URL}/sendMessage", json=payload)
             data = res.json()
             if not data.get("ok"):

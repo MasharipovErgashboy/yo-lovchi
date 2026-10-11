@@ -152,6 +152,16 @@ const stage = new Scenes.Stage([registrationWizard]);
 bot.use(session());
 bot.use(stage.middleware());
 
+function getDriverWebAppUrl(driver) {
+  const url = new URL(WEB_APP_URL);
+  if (driver) {
+    if (driver.phone) url.searchParams.set('phone', driver.phone);
+    if (driver.name) url.searchParams.set('name', driver.name);
+    if (driver.surname) url.searchParams.set('surname', driver.surname);
+  }
+  return url.toString();
+}
+
 // --- BOT COMMANDS ---
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
@@ -177,14 +187,22 @@ bot.start(async (ctx) => {
   await safeDelete(ctx, ctx.message.message_id);
 
   if (driver && driver.status === 'approved') {
-    const url = new URL(WEB_APP_URL);
-    url.searchParams.set('phone', driver.phone);
-    url.searchParams.set('name', driver.name);
-    url.searchParams.set('surname', driver.surname);
+    const webAppUrl = getDriverWebAppUrl(driver);
 
-    return ctx.reply("Siz allaqachon ro'yxatdan o'tgansiz va tasdiqlangansiz!", {
+    // Set individual chat menu button next to message input
+    await ctx.setChatMenuButton({
+      type: 'web_app',
+      text: "🚗 Ilovani ochish",
+      web_app: { url: webAppUrl }
+    }).catch(() => {});
+
+    return ctx.reply("Siz tasdiqlangan haydovchisiz! 🚗\n\nIstalgan vaqtda pastdagi yoki quyidagi tugma orqali ilovani ochishingiz mumkin.", {
       reply_markup: {
-        inline_keyboard: [[{ text: "🚗 Ilovani ochish", web_app: { url: url.toString() } }]]
+        keyboard: [
+          [{ text: "🚗 Ilovani ochish", web_app: { url: webAppUrl } }]
+        ],
+        resize_keyboard: true,
+        is_persistent: true
       }
     });
   }
@@ -214,6 +232,37 @@ bot.action('start_registration', async (ctx) => {
   ctx.scene.enter('driver_registration');
 });
 
+// Any text message handler for approved drivers
+bot.on('text', async (ctx, next) => {
+  if (ctx.scene?.current) return next();
+  const userId = ctx.from.id;
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/candidates/${userId}`);
+    if (res.ok) {
+      const driver = await res.json();
+      if (driver && driver.status === 'approved') {
+        const webAppUrl = getDriverWebAppUrl(driver);
+        await ctx.setChatMenuButton({
+          type: 'web_app',
+          text: "🚗 Ilovani ochish",
+          web_app: { url: webAppUrl }
+        }).catch(() => {});
+
+        return ctx.reply("Haydovchi tizimi faol. 🚗 Ilovani ochish tugmasini bosing:", {
+          reply_markup: {
+            keyboard: [
+              [{ text: "🚗 Ilovani ochish", web_app: { url: webAppUrl } }]
+            ],
+            resize_keyboard: true,
+            is_persistent: true
+          }
+        });
+      }
+    }
+  } catch (e) {}
+  return next();
+});
+
 // --- MOCK ADMIN COMMAND ---
 bot.command('approve', async (ctx) => {
   // Usage: /approve <userId>
@@ -237,11 +286,17 @@ bot.command('approve', async (ctx) => {
   }
 
   driver.status = 'approved';
-  
-  const url = new URL(WEB_APP_URL);
-  url.searchParams.set('phone', driver.phone);
-  url.searchParams.set('name', driver.name);
-  url.searchParams.set('surname', driver.surname);
+  const webAppUrl = getDriverWebAppUrl(driver);
+
+  // Set chat menu button
+  await bot.telegram.setChatMenuButton({
+    chatId: targetId,
+    menuButton: {
+      type: 'web_app',
+      text: "🚗 Ilovani ochish",
+      web_app: { url: webAppUrl }
+    }
+  }).catch(() => {});
 
   // Send notification to the driver
   await bot.telegram.sendMessage(
@@ -249,16 +304,30 @@ bot.command('approve', async (ctx) => {
     "🎉 Tabriklaymiz!\n\nSiz haydovchilikka qabul qilindingiz.\n\nIshni boshlash uchun ilovaga kiring va joylashuvingizni yoqing.",
     {
       reply_markup: {
-        inline_keyboard: [
-          [{ text: "🚗 Ilovani ochish", web_app: { url: url.toString() } }]
-        ]
+        keyboard: [
+          [{ text: "🚗 Ilovani ochish", web_app: { url: webAppUrl } }]
+        ],
+        resize_keyboard: true,
+        is_persistent: true
       }
     }
   ).catch(err => console.error("Could not notify driver:", err));
 });
 
-bot.launch().then(() => {
-  console.log("Haydovchi boti ishga tushdi (Auto-delete qismi bilan)!");
+bot.launch().then(async () => {
+  console.log("Haydovchi boti ishga tushdi!");
+  try {
+    await bot.telegram.setChatMenuButton({
+      menuButton: {
+        type: 'web_app',
+        text: "🚗 Ilovani ochish",
+        web_app: { url: WEB_APP_URL }
+      }
+    });
+    console.log("Global chat menu button o'rnatildi!");
+  } catch(e) {
+    console.error("setChatMenuButton error:", e);
+  }
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));

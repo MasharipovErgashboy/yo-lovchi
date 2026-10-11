@@ -9,25 +9,62 @@ const bot = new Telegraf('8910943568:AAHpGGEGLYm7KsB6df3AfOElAnN5TKBv5mo');
 const WEB_APP_URL = 'https://bicycle-spiritual-definition-underground.trycloudflare.com'; // <--- Cloudflare HTTPS
 
 bot.start((ctx) => {
+  ctx.setChatMenuButton({
+    type: 'web_app',
+    text: "🚕 Marshrutlarni ko'rish",
+    web_app: { url: WEB_APP_URL }
+  }).catch(() => {});
+
   ctx.reply(
     "Assalomu alaykum! Yo'nalishli taksilar (marshrutkalar) harakatini jonli kuzatish uchun quyidagi tugmani bosing:",
     {
       reply_markup: {
-        inline_keyboard: [
+        keyboard: [
           [
             {
               text: "🚕 Marshrutlarni ko'rish",
               web_app: { url: WEB_APP_URL }
             }
           ]
-        ]
+        ],
+        resize_keyboard: true,
+        is_persistent: true
       }
     }
   );
 });
 
-bot.launch().then(() => {
-  console.log('Bot ishga tushdi!');
+bot.on('text', (ctx) => {
+  ctx.reply(
+    "Marshrutlarni ko'rish uchun quyidagi tugmani bosing:",
+    {
+      reply_markup: {
+        keyboard: [
+          [
+            {
+              text: "🚕 Marshrutlarni ko'rish",
+              web_app: { url: WEB_APP_URL }
+            }
+          ]
+        ],
+        resize_keyboard: true,
+        is_persistent: true
+      }
+    }
+  );
+});
+
+bot.launch().then(async () => {
+  console.log('Mijozlar boti ishga tushdi!');
+  try {
+    await bot.telegram.setChatMenuButton({
+      menuButton: {
+        type: 'web_app',
+        text: "🚕 Marshrutlarni ko'rish",
+        web_app: { url: WEB_APP_URL }
+      }
+    });
+  } catch(e) {}
 });
 
 // Enable graceful stop

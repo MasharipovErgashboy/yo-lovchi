@@ -16,9 +16,14 @@ function App() {
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
     if (tg) {
-      tg.expand();
-      if (tg.disableVerticalSwipes) {
-        tg.disableVerticalSwipes();
+      try {
+        tg.ready();
+        tg.expand();
+        if (tg.disableVerticalSwipes) {
+          tg.disableVerticalSwipes();
+        }
+      } catch (e) {
+        console.error("Telegram WebApp init error:", e);
       }
     }
   }, []);
