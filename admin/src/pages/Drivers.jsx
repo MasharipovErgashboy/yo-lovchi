@@ -1,16 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Activity, MapPin, X, Route, Clock } from 'lucide-react';
 import './PagesCommon.css';
 
+const BACKEND_URL = "http://localhost:8000";
+
 export default function Drivers() {
   const [selectedDriver, setSelectedDriver] = useState(null);
-
-  const drivers = [
+  const [drivers, setDrivers] = useState([
     { id: 1, name: 'Anvar Tursunov', phone: '+998 90 111 22 33', status: 'Online', route: '12-marshrut', startTime: '07:30', endTime: null, tripsToday: 4, tripsTotal: 1250 },
     { id: 2, name: 'Bekzod Aliyev', phone: '+998 94 555 66 77', status: 'Offline', route: '15-marshrut', startTime: '08:00', endTime: '18:30', tripsToday: 8, tripsTotal: 840 },
     { id: 3, name: 'Dilmurod Karim', phone: '+998 99 888 99 00', status: 'Online', route: '18-marshrut', startTime: '09:15', endTime: null, tripsToday: 6, tripsTotal: 2100 },
     { id: 4, name: 'Hasan Hojiyev', phone: '+998 93 222 33 44', status: 'Online', route: '12-marshrut', startTime: '13:00', endTime: null, tripsToday: 2, tripsTotal: 430 },
-  ];
+  ]);
+
+  useEffect(() => {
+    const fetchApproved = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/drivers`);
+        if (res.ok) {
+          const apiDrivers = await res.json();
+          if (apiDrivers && apiDrivers.length > 0) {
+            const formatted = apiDrivers.map(d => ({
+              id: d.id,
+              name: `${d.name} ${d.surname}`,
+              phone: d.phone,
+              status: 'Online',
+              route: 'Biriktirilmagan',
+              startTime: d.updated_at ? d.updated_at.split(' ')[1] : '08:00',
+              endTime: null,
+              tripsToday: 0,
+              tripsTotal: 0
+            }));
+            setDrivers(prev => {
+              // Combine existing demo drivers with newly approved drivers without duplicate IDs
+              const existingIds = new Set(formatted.map(f => f.id));
+              return [...formatted, ...prev.filter(p => !existingIds.has(p.id))];
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Error fetching approved drivers:", e);
+      }
+    };
+    fetchApproved();
+    const interval = setInterval(fetchApproved, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="page-container">

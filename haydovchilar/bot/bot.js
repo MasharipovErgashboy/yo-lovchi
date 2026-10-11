@@ -7,6 +7,7 @@ const bot = new Telegraf(BOT_TOKEN);
 const driversDb = new Map(); // userId -> { name, surname, phone, status, pendingMessageId }
 
 const WEB_APP_URL = "https://hxcnz-82-215-96-37.free.pinggy.net";
+const BACKEND_URL = "http://localhost:8000";
 
 // Helper to safely delete messages
 async function safeDelete(ctx, messageId) {
@@ -118,15 +119,24 @@ const registrationWizard = new Scenes.WizardScene(
       
       // Update message to pending
       const pendingMsg = await ctx.editMessageText("Arizangiz yuborildi.\n\nAdmin tasdiqlashini kuting.");
+      const pendingId = pendingMsg ? pendingMsg.message_id : ctx.callbackQuery.message.message_id;
       
-      // Save to mock DB
-      driversDb.set(ctx.from.id, {
-        name,
-        surname,
-        phone,
-        status: 'pending',
-        pendingMessageId: pendingMsg ? pendingMsg.message_id : ctx.callbackQuery.message.message_id
-      });
+      // Save to Python backend
+      try {
+        await fetch(`${BACKEND_URL}/api/candidates`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            telegram_id: ctx.from.id,
+            name: name,
+            surname: surname,
+            phone: phone,
+            pending_message_id: pendingId
+          })
+        });
+      } catch (err) {
+        console.error("Error submitting candidate to backend:", err);
+      }
       
       return ctx.scene.leave();
       
@@ -145,14 +155,21 @@ bot.use(stage.middleware());
 // --- BOT COMMANDS ---
 bot.start(async (ctx) => {
   const userId = ctx.from.id;
-  const driver = driversDb.get(userId);
+  let driver = null;
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/candidates/${userId}`);
+    if (res.ok) {
+      driver = await res.json();
+    }
+  } catch (e) {
+    console.error("Backend fetch error:", e);
+  }
 
   // If user sends /start, clean up old bot message if possible
-  // We can't easily know the old pending message ID here unless we fetch it from DB, which we will do.
-  if (driver && driver.pendingMessageId) {
+  if (driver && driver.pending_message_id) {
     try {
-      await ctx.deleteMessage(driver.pendingMessageId);
-      driver.pendingMessageId = null;
+      await ctx.deleteMessage(driver.pending_message_id);
     } catch(e) {}
   }
 
@@ -174,7 +191,6 @@ bot.start(async (ctx) => {
 
   if (driver && driver.status === 'pending') {
     const pendingMsg = await ctx.reply("Arizangiz yuborilgan. Admin tasdiqlashini kuting.");
-    driver.pendingMessageId = pendingMsg.message_id;
     return;
   }
 
