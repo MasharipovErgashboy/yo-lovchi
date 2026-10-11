@@ -6,7 +6,7 @@
   height: 100dvh;
   position: relative;
   overflow: hidden;
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: var(--app-top-inset);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
@@ -17,7 +17,7 @@
 }
 
 .joylashuv-tab {
-  padding: 24px 20px;
+  padding: 12px 20px 24px 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -397,7 +397,7 @@
 
 /* Profile Page */
 .profile-container {
-  padding: 24px 20px;
+  padding: 12px 20px 24px 20px;
   position: relative;
   overflow: hidden;
   min-height: 100vh;
@@ -648,7 +648,7 @@
   top: 0;
   z-index: 10;
   background-color: var(--bg-color);
-  padding: 24px 20px 16px 20px;
+  padding: 12px 20px 16px 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;

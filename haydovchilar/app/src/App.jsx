@@ -37,10 +37,27 @@ function App() {
         console.error("Telegram WebApp init error:", e);
       }
 
+      const updateInsets = () => {
+        try {
+          const contentTop = tg.contentSafeAreaInset?.top || 0;
+          const safeTop = tg.safeAreaInset?.top || 0;
+          const top = Math.max(contentTop, safeTop + 54, 64);
+          document.documentElement.style.setProperty('--app-top-inset', `${top}px`);
+        } catch(e) {}
+      };
+      updateInsets();
+
+      if (typeof tg.onEvent === 'function') {
+        tg.onEvent('contentSafeAreaChanged', updateInsets);
+        tg.onEvent('safeAreaChanged', updateInsets);
+        tg.onEvent('fullscreenChanged', updateInsets);
+      }
+
       const enterFs = () => {
         try {
           if (typeof tg.requestFullscreen === 'function' && !tg.isFullscreen) {
             tg.requestFullscreen();
+            updateInsets();
           }
         } catch (e) {}
       };

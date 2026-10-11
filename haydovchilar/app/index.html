@@ -29,11 +29,32 @@
             if (typeof tg.setBackgroundColor === 'function') {
               tg.setBackgroundColor('#F0F4F8');
             }
+
+            var updateInset = function() {
+              var contentTop = (tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) || 0;
+              var safeTop = (tg.safeAreaInset && tg.safeAreaInset.top) || 0;
+              var top = Math.max(contentTop, safeTop + 54, 64);
+              document.documentElement.style.setProperty('--app-top-inset', top + 'px');
+            };
+            updateInset();
+            if (tg.onEvent) {
+              tg.onEvent('contentSafeAreaChanged', updateInset);
+              tg.onEvent('safeAreaChanged', updateInset);
+              tg.onEvent('fullscreenChanged', updateInset);
+            }
           }
         } catch (e) {}
       })();
     </script>
     <style>
+      :root {
+        --app-top-inset: max(
+          var(--tg-content-safe-area-inset-top, 0px),
+          calc(var(--tg-safe-area-inset-top, 0px) + 54px),
+          calc(env(safe-area-inset-top, 0px) + 54px),
+          64px
+        );
+      }
       html, body {
         width: 100%;
         height: 100%;
@@ -54,7 +75,7 @@
       .instant-shell {
         display: flex;
         flex-direction: column;
-        padding: 24px 20px;
+        padding: calc(var(--app-top-inset) + 12px) 20px 24px 20px;
         gap: 16px;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       }
