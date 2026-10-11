@@ -121,6 +121,9 @@ const registrationWizard = new Scenes.WizardScene(
       const pendingMsg = await ctx.editMessageText("Arizangiz yuborildi.\n\nAdmin tasdiqlashini kuting.");
       const pendingId = pendingMsg ? pendingMsg.message_id : ctx.callbackQuery.message.message_id;
       
+      // Ensure menu button is commands (NOT web_app) while pending!
+      await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});
+
       // Save to Python backend
       try {
         await fetch(`${BACKEND_URL}/api/candidates`, {
@@ -200,12 +203,13 @@ bot.start(async (ctx) => {
   }
 
   if (driver && driver.status === 'pending') {
+    await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});
     const pendingMsg = await ctx.reply("Arizangiz yuborilgan. Admin tasdiqlashini kuting.");
     return;
   }
 
-  // Not registered or deleted: reset chat menu button and remove keyboard
-  await ctx.setChatMenuButton({ type: 'default' }).catch(() => {});
+  // Not registered or deleted: ensure menu button is commands (NO Ilovani ochish)
+  await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});
 
   const startMsg = await ctx.reply("Haydovchi tizimiga xush kelibsiz.", {
     reply_markup: {
@@ -223,6 +227,7 @@ bot.start(async (ctx) => {
 
 bot.action('start_registration', async (ctx) => {
   ctx.answerCbQuery();
+  await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});
   await safeDelete(ctx, ctx.callbackQuery.message.message_id);
   ctx.scene.enter('driver_registration');
 });
@@ -298,7 +303,7 @@ bot.launch().then(async () => {
   try {
     await bot.telegram.setChatMenuButton({
       menuButton: {
-        type: 'default'
+        type: 'commands'
       }
     });
   } catch(e) {

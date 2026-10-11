@@ -86,7 +86,7 @@ async def send_rejection_message(
     telegram_id: int,
     pending_message_id: int = None
 ) -> bool:
-    """Send rejection message to driver."""
+    """Send rejection message to driver and ensure menu button is commands."""
     if pending_message_id:
         await delete_telegram_message(telegram_id, pending_message_id)
 
@@ -102,6 +102,14 @@ async def send_rejection_message(
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
+            # Ensure menu button is commands (NO Ilovani ochish)
+            await client.post(
+                f"{BASE_URL}/setChatMenuButton",
+                json={
+                    "chat_id": telegram_id,
+                    "menu_button": {"type": "commands"}
+                }
+            )
             res = await client.post(f"{BASE_URL}/sendMessage", json=payload)
             data = res.json()
             return data.get("ok", False)
@@ -116,12 +124,12 @@ async def reset_driver_bot_state(
     """Reset driver bot state: removes chat menu button, clears messages, and shows initial registration prompt."""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # 1. Reset Chat Menu Button to default (removes 'Ilovani ochish' button)
+            # 1. Reset Chat Menu Button to commands (removes 'Ilovani ochish' button)
             await client.post(
                 f"{BASE_URL}/setChatMenuButton",
                 json={
                     "chat_id": telegram_id,
-                    "menu_button": {"type": "default"}
+                    "menu_button": {"type": "commands"}
                 }
             )
 
