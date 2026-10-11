@@ -121,8 +121,8 @@ const registrationWizard = new Scenes.WizardScene(
       const pendingMsg = await ctx.editMessageText("Arizangiz yuborildi.\n\nAdmin tasdiqlashini kuting.");
       const pendingId = pendingMsg ? pendingMsg.message_id : ctx.callbackQuery.message.message_id;
       
-      // Ensure menu button is commands (NOT web_app) while pending!
-      await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});
+      // Ensure menu button is default
+      await ctx.setChatMenuButton({ type: 'default' }).catch(() => {});
 
       // Save to Python backend
       try {
@@ -192,12 +192,8 @@ bot.start(async (ctx) => {
   if (driver && driver.status === 'approved') {
     const webAppUrl = getDriverWebAppUrl(driver);
 
-    // Set individual chat menu button next to message input (without icon)
-    await ctx.setChatMenuButton({
-      type: 'web_app',
-      text: "Ilovani ochish",
-      web_app: { url: webAppUrl }
-    }).catch(() => {});
+    // Ensure menu button is default (NO blue menu button)
+    await ctx.setChatMenuButton({ type: 'default' }).catch(() => {});
 
     return ctx.reply(
       "🎉 Tabriklaymiz!\n\nSiz haydovchilikka qabul qilindingiz. Haydovchi tizimi faol!",
@@ -208,13 +204,13 @@ bot.start(async (ctx) => {
   }
 
   if (driver && driver.status === 'pending') {
-    await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});
+    await ctx.setChatMenuButton({ type: 'default' }).catch(() => {});
     const pendingMsg = await ctx.reply("Arizangiz yuborilgan. Admin tasdiqlashini kuting.");
     return;
   }
 
-  // Not registered or deleted: ensure menu button is commands (NO Ilovani ochish)
-  await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});
+  // Not registered or deleted: ensure menu button is default (NO blue menu button)
+  await ctx.setChatMenuButton({ type: 'default' }).catch(() => {});
 
   // Remove any persistent keyboard
   await ctx.reply("Haydovchi tizimiga xush kelibsiz.", Markup.removeKeyboard())
@@ -236,7 +232,7 @@ bot.start(async (ctx) => {
 
 bot.action('start_registration', async (ctx) => {
   ctx.answerCbQuery();
-  await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});
+  await ctx.setChatMenuButton({ type: 'default' }).catch(() => {});
   await safeDelete(ctx, ctx.callbackQuery.message.message_id);
   ctx.scene.enter('driver_registration');
 });
@@ -251,11 +247,7 @@ bot.on('text', async (ctx, next) => {
       const driver = await res.json();
       if (driver && driver.status === 'approved') {
         const webAppUrl = getDriverWebAppUrl(driver);
-        await ctx.setChatMenuButton({
-          type: 'web_app',
-          text: "Ilovani ochish",
-          web_app: { url: webAppUrl }
-        }).catch(() => {});
+        await ctx.setChatMenuButton({ type: 'default' }).catch(() => {});
 
         return ctx.reply(
           "🎉 Tabriklaymiz!\n\nSiz haydovchilikka qabul qilindingiz. Haydovchi tizimi faol!",
@@ -298,9 +290,7 @@ bot.command('approve', async (ctx) => {
   await bot.telegram.setChatMenuButton({
     chatId: targetId,
     menuButton: {
-      type: 'web_app',
-      text: "Ilovani ochish",
-      web_app: { url: webAppUrl }
+      type: 'default'
     }
   }).catch(() => {});
 
@@ -317,9 +307,10 @@ bot.command('approve', async (ctx) => {
 bot.launch().then(async () => {
   console.log("Haydovchi boti ishga tushdi!");
   try {
+    await bot.telegram.deleteMyCommands().catch(() => {});
     await bot.telegram.setChatMenuButton({
       menuButton: {
-        type: 'commands'
+        type: 'default'
       }
     });
   } catch(e) {

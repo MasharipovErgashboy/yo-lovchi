@@ -47,16 +47,12 @@ async def send_approval_message(
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # 1. Set Chat Menu Button permanently for driver (no icon)
+            # 1. Reset Chat Menu Button to default (no blue menu button on bottom-left)
             await client.post(
                 f"{BASE_URL}/setChatMenuButton",
                 json={
                     "chat_id": telegram_id,
-                    "menu_button": {
-                        "type": "web_app",
-                        "text": "Ilovani ochish",
-                        "web_app": {"url": full_url}
-                    }
+                    "menu_button": {"type": "default"}
                 }
             )
 
@@ -104,12 +100,12 @@ async def send_rejection_message(
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # Ensure menu button is commands (NO Ilovani ochish)
+            # Ensure menu button is default
             await client.post(
                 f"{BASE_URL}/setChatMenuButton",
                 json={
                     "chat_id": telegram_id,
-                    "menu_button": {"type": "commands"}
+                    "menu_button": {"type": "default"}
                 }
             )
             res = await client.post(f"{BASE_URL}/sendMessage", json=payload)
@@ -126,12 +122,12 @@ async def reset_driver_bot_state(
     """Reset driver bot state: removes chat menu button, clears messages, and shows initial registration prompt."""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            # 1. Reset Chat Menu Button to commands (removes 'Ilovani ochish' button)
+            # 1. Reset Chat Menu Button to default (removes any custom menu button)
             await client.post(
                 f"{BASE_URL}/setChatMenuButton",
                 json={
                     "chat_id": telegram_id,
-                    "menu_button": {"type": "commands"}
+                    "menu_button": {"type": "default"}
                 }
             )
 
