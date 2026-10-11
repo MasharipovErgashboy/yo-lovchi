@@ -42,9 +42,7 @@ async def send_approval_message(
 
     text = (
         "🎉 Tabriklaymiz!\n\n"
-        "Siz haydovchilikka qabul qilindingiz. Haydovchi tizimi faol!\n\n"
-        "Ishni boshlash uchun ilovaga kiring va joylashuvingizni yoqing.\n"
-        "Istalgan vaqtda pastki chat menyusidagi «Ilovani ochish» tugmasi orqali ilovani to'g'ridan-to'g'ri ochishingiz mumkin."
+        "Siz haydovchilikka qabul qilindingiz. Haydovchi tizimi faol!"
     )
 
     try:
@@ -62,14 +60,18 @@ async def send_approval_message(
                 }
             )
 
-            # 2. Send single combined approval message without inline button (button is in chat menu)
+            # 2. Send single combined approval message with persistent keyboard button in "Xabar" area
             res = await client.post(
                 f"{BASE_URL}/sendMessage",
                 json={
                     "chat_id": telegram_id,
                     "text": text,
                     "reply_markup": {
-                        "remove_keyboard": True
+                        "keyboard": [
+                            [{"text": "Ilovani ochish", "web_app": {"url": full_url}}]
+                        ],
+                        "resize_keyboard": True,
+                        "is_persistent": True
                     }
                 }
             )
@@ -146,7 +148,26 @@ async def reset_driver_bot_state(
                     except Exception:
                         pass
 
-            # 3. Send fresh initial welcome message with 'Haydovchi bo'lish' button
+            # 3. Explicitly remove any persistent reply keyboard
+            try:
+                res_rm = await client.post(
+                    f"{BASE_URL}/sendMessage",
+                    json={
+                        "chat_id": telegram_id,
+                        "text": "Haydovchi tizimi to'xtatildi.",
+                        "reply_markup": {"remove_keyboard": True}
+                    }
+                )
+                rm_id = res_rm.json().get("result", {}).get("message_id")
+                if rm_id:
+                    await client.post(
+                        f"{BASE_URL}/deleteMessage",
+                        json={"chat_id": telegram_id, "message_id": rm_id}
+                    )
+            except Exception:
+                pass
+
+            # 4. Send fresh initial welcome message with 'Haydovchi bo'lish' button
             payload = {
                 "chat_id": telegram_id,
                 "text": "Haydovchi tizimiga xush kelibsiz.",

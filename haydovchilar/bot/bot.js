@@ -199,7 +199,12 @@ bot.start(async (ctx) => {
       web_app: { url: webAppUrl }
     }).catch(() => {});
 
-    return ctx.reply("Siz tasdiqlangan haydovchisiz! Haydovchi tizimi faol.\n\nIstalgan vaqtda pastki chat menyusidagi «Ilovani ochish» tugmasi orqali ilovani ochishingiz mumkin.", Markup.removeKeyboard());
+    return ctx.reply(
+      "🎉 Tabriklaymiz!\n\nSiz haydovchilikka qabul qilindingiz. Haydovchi tizimi faol!",
+      Markup.keyboard([
+        Markup.button.webApp("Ilovani ochish", webAppUrl)
+      ]).resize().persistent()
+    );
   }
 
   if (driver && driver.status === 'pending') {
@@ -211,9 +216,13 @@ bot.start(async (ctx) => {
   // Not registered or deleted: ensure menu button is commands (NO Ilovani ochish)
   await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});
 
+  // Remove any persistent keyboard
+  await ctx.reply("Haydovchi tizimiga xush kelibsiz.", Markup.removeKeyboard())
+    .then(msg => safeDelete(ctx, msg.message_id))
+    .catch(() => {});
+
   const startMsg = await ctx.reply("Haydovchi tizimiga xush kelibsiz.", {
     reply_markup: {
-      remove_keyboard: true,
       inline_keyboard: [
         [{ text: "Haydovchi bo'lish", callback_data: "start_registration" }]
       ]
@@ -248,7 +257,12 @@ bot.on('text', async (ctx, next) => {
           web_app: { url: webAppUrl }
         }).catch(() => {});
 
-        return ctx.reply("Haydovchi tizimi faol.\n\nIlovani ochish uchun pastki chat menyusidagi «Ilovani ochish» tugmasini bosing.", Markup.removeKeyboard());
+        return ctx.reply(
+          "🎉 Tabriklaymiz!\n\nSiz haydovchilikka qabul qilindingiz. Haydovchi tizimi faol!",
+          Markup.keyboard([
+            Markup.button.webApp("Ilovani ochish", webAppUrl)
+          ]).resize().persistent()
+        );
       }
     }
   } catch (e) {}
@@ -293,8 +307,10 @@ bot.command('approve', async (ctx) => {
   // Send single combined notification to the driver
   await bot.telegram.sendMessage(
     targetId,
-    "🎉 Tabriklaymiz!\n\nSiz haydovchilikka qabul qilindingiz. Haydovchi tizimi faol!\n\nIshni boshlash uchun ilovaga kiring va joylashuvingizni yoqing.\nIstalgan vaqtda pastki chat menyusidagi «Ilovani ochish» tugmasi orqali ilovani to'g'ridan-to'g'ri ochishingiz mumkin.",
-    Markup.removeKeyboard()
+    "🎉 Tabriklaymiz!\n\nSiz haydovchilikka qabul qilindingiz. Haydovchi tizimi faol!",
+    Markup.keyboard([
+      Markup.button.webApp("Ilovani ochish", webAppUrl)
+    ]).resize().persistent()
   ).catch(err => console.error("Could not notify driver:", err));
 });
 
