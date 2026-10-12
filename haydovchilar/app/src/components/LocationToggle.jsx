@@ -22,8 +22,9 @@ export default function LocationToggle({ enabled, setEnabled }) {
   };
 
   return (
-    <div className="location-card">
+    <div className={`location-card ${enabled ? 'is-active' : ''}`}>
       <div className="map-bg"></div>
+      <div className="map-overlay"></div>
       
       <div className="location-content">
         <div className="pulse-icon-container">

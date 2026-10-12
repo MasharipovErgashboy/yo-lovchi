@@ -56,37 +56,61 @@
 /* Location Toggle */
 .location-card {
   background-color: var(--white);
-  border-radius: 20px;
-  padding: 40px 20px;
+  border-radius: 24px;
+  padding: 38px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.04);
   position: relative;
   overflow: hidden;
   border: 1px solid var(--border-color);
-  min-height: 280px;
+  min-height: 290px;
   justify-content: center;
+  transition: all 0.3s ease;
 }
 
-/* Map background placeholder */
+.location-card.is-active {
+  border-color: rgba(0, 102, 255, 0.25);
+  box-shadow: 0 8px 30px rgba(0, 102, 255, 0.08);
+}
+
+/* Real Map background */
 .map-bg {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
-  background-color: #F8FAFC;
-  background-image: 
-    linear-gradient(45deg, #E2E8F0 25%, transparent 25%, transparent 75%, #E2E8F0 75%, #E2E8F0),
-    linear-gradient(45deg, #E2E8F0 25%, transparent 25%, transparent 75%, #E2E8F0 75%, #E2E8F0);
-  background-size: 60px 60px;
-  background-position: 0 0, 30px 30px;
-  opacity: 0.3;
+  background-image: url('/map-bg.png');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.5;
   z-index: 0;
+  filter: saturate(1.1) contrast(1.05);
+  transition: all 0.4s ease;
+}
+
+.location-card.is-active .map-bg {
+  opacity: 0.7;
+  filter: saturate(1.25) contrast(1.1);
+  transform: scale(1.02);
+}
+
+.map-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.88) 0%, rgba(255, 255, 255, 0.58) 65%, rgba(255, 255, 255, 0.32) 100%);
+  z-index: 1;
+  pointer-events: none;
+  transition: all 0.4s ease;
+}
+
+.location-card.is-active .map-overlay {
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.82) 0%, rgba(255, 255, 255, 0.48) 65%, rgba(255, 255, 255, 0.22) 100%);
 }
 
 .location-content {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   width: 100%;
   display: flex;
   flex-direction: column;
