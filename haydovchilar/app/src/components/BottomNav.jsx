@@ -1,6 +1,6 @@
 import { MapPin, MessageCircle, User } from 'lucide-react'
 
-export default function BottomNav({ activeTab, setActiveTab }) {
+export default function BottomNav({ activeTab, setActiveTab, unreadCount = 0 }) {
   return (
     <div className="bottom-nav">
       <button 
@@ -19,7 +19,7 @@ export default function BottomNav({ activeTab, setActiveTab }) {
       >
         <div className="nav-item-bg" style={{ position: 'relative' }}>
           <MessageCircle size={24} color={activeTab === 'xabarlar' ? 'var(--blue-primary)' : 'var(--text-secondary)'} strokeWidth={activeTab === 'xabarlar' ? 2.5 : 2} />
-          <div className="nav-badge-dot"></div>
+          {unreadCount > 0 && <div className="nav-badge-dot"></div>}
         </div>
         <span className="nav-text" style={{ color: activeTab === 'xabarlar' ? 'var(--blue-primary)' : 'var(--text-secondary)' }}>Xabarlar</span>
       </button>

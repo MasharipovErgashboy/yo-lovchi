@@ -1,11 +1,12 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { MessageCircle, Bell, AlertTriangle, User, Bus, CheckCircle2, Info, ChevronRight, X, Loader2 } from 'lucide-react'
 
-export default function Messages() {
+export default function Messages({ onUnreadChange }) {
   const [activeMsgTab, setActiveMsgTab] = useState('barchasi');
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const locallyReadIds = useRef(new Set());
 
   const { phone, tgUserId } = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -23,7 +24,14 @@ export default function Messages() {
       const res = await fetch(`/api/driver-messages?${q.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setMessages(data || []);
+        const processed = (data || []).map(m => 
+          locallyReadIds.current.has(m.id) ? { ...m, is_read: true } : m
+        );
+        setMessages(processed);
+        const unread = processed.filter(m => !m.is_read).length;
+        if (typeof onUnreadChange === 'function') {
+          onUnreadChange(unread);
+        }
       }
     } catch (err) {
       console.error("Xabarlarni yuklashda xatolik:", err);
@@ -39,11 +47,27 @@ export default function Messages() {
     return () => clearInterval(interval);
   }, [phone, tgUserId]);
 
-  const handleOpenMessage = async (msg) => {
+  // Xabarni bosib ochganda: Faqat modal ochiladi, o'qilgan deb belgilanmaydi
+  const handleOpenMessage = (msg) => {
     setSelectedMessage(msg);
+  };
+
+  // "Tushunarli" tugmasi yoki yopish bosilganda: Qizil nuqta yo'qoladi va o'qilgan deb saqlanadi
+  const handleConfirmRead = async (msg) => {
+    setSelectedMessage(null);
+    if (!msg) return;
+
     if (!msg.is_read) {
-      // Mahalliy holatda o'qilgan deb belgilash
-      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, is_read: true } : m));
+      locallyReadIds.current.add(msg.id);
+      setMessages(prev => {
+        const next = prev.map(m => m.id === msg.id ? { ...m, is_read: true } : m);
+        const unread = next.filter(m => !m.is_read).length;
+        if (typeof onUnreadChange === 'function') {
+          onUnreadChange(unread);
+        }
+        return next;
+      });
+
       try {
         const q = new URLSearchParams();
         if (phone) q.set('phone', phone);
@@ -86,17 +110,52 @@ export default function Messages() {
     }
   };
 
-  const formatTime = (dateStr) => {
-    if (!dateStr) return '';
-    try {
-      if (dateStr.includes(' ')) {
-        const parts = dateStr.split(' ');
-        return parts[1] || dateStr;
-      }
-      return dateStr;
-    } catch {
-      return dateStr;
+  const parseUtcDate = (dateStr) => {
+    if (!dateStr) return null;
+    let str = String(dateStr).trim();
+    if (!str.endsWith('Z') && !str.includes('+')) {
+      str = str.replace(' ', 'T') + 'Z';
     }
+    const date = new Date(str);
+    return isNaN(date.getTime()) ? null : date;
+  };
+
+  const formatCardTime = (dateStr) => {
+    const date = parseUtcDate(dateStr);
+    if (!date) return '';
+
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const timeStr = `${hours}:${minutes}`;
+
+    if (isToday) {
+      return timeStr;
+    }
+
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) {
+      return `Kecha, ${timeStr}`;
+    }
+
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return `${day}.${month}, ${timeStr}`;
+  };
+
+  const formatModalTime = (dateStr) => {
+    const date = parseUtcDate(dateStr);
+    if (!date) return '';
+
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}.${month}.${year}, ${hours}:${minutes}`;
   };
 
   const filteredMessages = messages.filter(msg => {
@@ -186,14 +245,14 @@ export default function Messages() {
                         <span className="message-title" style={{ fontWeight: !msg.is_read ? '700' : '600' }}>
                           {msg.title}
                         </span>
-                        <span className="message-time">{formatTime(msg.created_at)}</span>
+                        <span className="message-time">{formatCardTime(msg.created_at)}</span>
                       </div>
                       <div className="message-body">
                         <span className="message-desc" style={{ color: !msg.is_read ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                           {msg.message}
                         </span>
                         <div className="message-right">
-                          {!msg.is_read && <div className="unread-dot"></div>}
+                          {!msg.is_read && <div className="unread-dot" title="Yangi xabar"></div>}
                           <ChevronRight size={16} color="var(--text-secondary)" className="chevron" />
                         </div>
                       </div>
@@ -231,9 +290,9 @@ export default function Messages() {
       {selectedMessage && (() => {
         const modalMeta = getTypeMeta(selectedMessage.type);
         return (
-          <div className="modal-overlay" onClick={() => setSelectedMessage(null)}>
+          <div className="modal-overlay" onClick={() => handleConfirmRead(selectedMessage)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <button className="modal-close-btn" onClick={() => setSelectedMessage(null)}>
+              <button className="modal-close-btn" onClick={() => handleConfirmRead(selectedMessage)}>
                 <X size={18} />
               </button>
               
@@ -246,13 +305,13 @@ export default function Messages() {
               </div>
 
               <h3 className="modal-title">{selectedMessage.title}</h3>
-              <div className="modal-time">{selectedMessage.created_at || ''}</div>
+              <div className="modal-time">{formatModalTime(selectedMessage.created_at)}</div>
 
               <div className="modal-desc-box" style={{ backgroundColor: modalMeta.bgLight, whiteSpace: 'pre-wrap' }}>
                 {selectedMessage.message}
               </div>
 
-              <button className="btn-primary" onClick={() => setSelectedMessage(null)}>
+              <button className="btn-primary" onClick={() => handleConfirmRead(selectedMessage)}>
                 Tushunarli
               </button>
             </div>
@@ -262,4 +321,5 @@ export default function Messages() {
     </>
   );
 }
+
 

@@ -14,6 +14,7 @@ function App() {
   const [locationEnabled, setLocationEnabled] = useState(false)
   const [capacity, setCapacity] = useState('bosh') // 'bosh' | 'ozroq' | 'tola'
   const [isKickedOut, setIsKickedOut] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
@@ -98,6 +99,33 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Real-time check for unread messages badge on bottom nav
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const phone = params.get('phone');
+    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+
+    if (!phone && !tgUserId) return;
+
+    const checkUnread = async () => {
+      try {
+        const q = new URLSearchParams();
+        if (phone) q.set('phone', phone);
+        if (tgUserId) q.set('telegram_id', tgUserId);
+        const res = await fetch(`/api/driver-messages?${q.toString()}`);
+        if (res.ok) {
+          const list = await res.json();
+          const unread = (list || []).filter(m => !m.is_read).length;
+          setUnreadCount(unread);
+        }
+      } catch (e) {}
+    };
+
+    checkUnread();
+    const interval = setInterval(checkUnread, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
   if (isKickedOut) {
     return (
       <div style={{
@@ -144,7 +172,7 @@ function App() {
       
       {activeTab === 'xabarlar' && (
         <div className="tab-content" style={{ padding: 0 }}>
-          <Messages />
+          <Messages onUnreadChange={setUnreadCount} />
         </div>
       )}
 
@@ -154,7 +182,7 @@ function App() {
         </div>
       )}
 
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
+      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} unreadCount={unreadCount} />
     </div>
   )
 }

@@ -389,14 +389,27 @@
   position: absolute;
   top: 4px;
   right: 20px;
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background-color: var(--red);
+  background-color: #ef4444;
   border: 2px solid white;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+  animation: pulseDot 2s infinite ease-in-out;
 }
 .nav-item.active .nav-badge-dot {
   border-color: var(--blue-light);
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.85;
+  }
 }
 
 /* Profile Page */
@@ -865,10 +878,14 @@
   flex-shrink: 0;
 }
 .unread-dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background-color: var(--blue-primary);
+  background-color: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+  flex-shrink: 0;
+  display: inline-block;
+  animation: pulseDot 2s infinite ease-in-out;
 }
 .unread-badge {
   background-color: var(--blue-primary);

@@ -97,6 +97,24 @@ export default function Messages() {
     } finally {
       setIsSending(false);
     }
+  const formatAdminDate = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      let str = String(dateStr).trim();
+      if (!str.endsWith('Z') && !str.includes('+')) {
+        str = str.replace(' ', 'T') + 'Z';
+      }
+      const d = new Date(str);
+      if (isNaN(d.getTime())) return dateStr;
+      const h = String(d.getHours()).padStart(2, '0');
+      const m = String(d.getMinutes()).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}.${month}.${year} ${h}:${m}`;
+    } catch {
+      return dateStr;
+    }
   };
 
   return (
@@ -257,7 +275,7 @@ export default function Messages() {
                         ? '📢 Barchaga' 
                         : `👤 ${item.driver_name || 'Haydovchi'} ${item.driver_surname || ''}`}
                     </span>
-                    <span className="history-date">{item.created_at}</span>
+                    <span className="history-date">{formatAdminDate(item.created_at)}</span>
                   </div>
                   <h4 style={{ margin: '0 0 6px 0', fontSize: '15px', color: 'var(--text-main)', fontWeight: 600 }}>
                     {item.title}
