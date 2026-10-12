@@ -7,21 +7,25 @@
   position: relative;
   overflow: hidden;
   padding-top: var(--app-top-inset);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
 }
 
 .tab-content {
-  flex: 1;
-  overflow-y: auto;
-  padding-bottom: 24px;
+  flex: 1 1 0%;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 .joylashuv-tab {
-  padding: 12px 20px 24px 20px;
+  padding: 12px 20px calc(90px + env(safe-area-inset-bottom, 0px)) 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  overflow-y: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Header */
@@ -350,7 +354,7 @@
   background-color: var(--white);
   display: flex;
   justify-content: space-around;
-  padding: 12px 0 24px 0;
+  padding: 10px 0 calc(14px + env(safe-area-inset-bottom, 0px)) 0;
   border-top: 1px solid var(--border-color);
   z-index: 100;
 }
@@ -397,10 +401,11 @@
 
 /* Profile Page */
 .profile-container {
-  padding: 12px 20px 24px 20px;
+  padding: 12px 20px calc(90px + env(safe-area-inset-bottom, 0px)) 20px;
   position: relative;
-  overflow: hidden;
-  min-height: 100vh;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  min-height: 100%;
 }
 .profile-bg-shape {
   position: absolute;
@@ -641,7 +646,7 @@
 .messages-container {
   display: flex;
   flex-direction: column;
-  padding-bottom: 24px;
+  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
 }
 .messages-sticky-header {
   position: sticky;
@@ -655,8 +660,6 @@
 }
 .messages-list-wrapper {
   padding: 0 20px;
-  min-height: 100vh;
-  padding-bottom: 100px;
 }
 
 /* Modal Overlay */
