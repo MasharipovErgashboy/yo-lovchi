@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Eye, Check, X, Phone, User, Loader2, RefreshCw } from 'lucide-react';
 import './PagesCommon.css';
 
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = "";
 
 export default function Candidates() {
   const [candidates, setCandidates] = useState([]);

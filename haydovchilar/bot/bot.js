@@ -6,8 +6,8 @@ const bot = new Telegraf(BOT_TOKEN);
 // In-memory mock database for drivers
 const driversDb = new Map(); // userId -> { name, surname, phone, status, pendingMessageId }
 
-const WEB_APP_URL = "https://metallica-graduate-kid-bind.trycloudflare.com";
-const BACKEND_URL = "http://localhost:8000";
+const WEB_APP_URL = process.env.WEB_APP_URL || "https://driver.andijoncity.uz";
+const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8008";
 
 // Helper to safely delete messages
 async function safeDelete(ctx, messageId) {

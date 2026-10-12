@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Activity, MapPin, X, Route, Clock, Car, Loader2, RefreshCw, Trash2, AlertTriangle, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
 import './PagesCommon.css';
 
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = "";
 
 export default function Drivers() {
   const [selectedDriver, setSelectedDriver] = useState(null);

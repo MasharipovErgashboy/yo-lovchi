@@ -3,7 +3,7 @@ import { Send, MessageSquare, AlertCircle, CheckCircle2, Info, Bell, RefreshCw, 
 import './PagesCommon.css';
 import './Messages.css';
 
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = "";
 
 export default function Messages() {
   const [target, setTarget] = useState('all');

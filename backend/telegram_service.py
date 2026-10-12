@@ -8,7 +8,7 @@ BOT_TOKEN = "8611884504:AAE6Aca8wJPRiyJK1Pf-soWNf8Ry2fnAxNI"
 BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 # Default fallback if not provided
-DEFAULT_WEB_APP_URL = "https://metallica-graduate-kid-bind.trycloudflare.com"
+DEFAULT_WEB_APP_URL = "https://driver.andijoncity.uz"
 
 async def delete_telegram_message(telegram_id: int, message_id: int):
     """Safely delete a message via Telegram Bot API."""

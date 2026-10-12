@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = "";
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('');
