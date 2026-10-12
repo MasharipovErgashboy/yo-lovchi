@@ -65,6 +65,31 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
+
+    # Messages table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id SERIAL PRIMARY KEY,
+            sender_type VARCHAR(50) DEFAULT 'admin',
+            target_type VARCHAR(50) DEFAULT 'all',
+            driver_id INTEGER REFERENCES candidates(id) ON DELETE CASCADE,
+            title VARCHAR(255) NOT NULL,
+            message TEXT NOT NULL,
+            type VARCHAR(50) DEFAULT 'system',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
+    # Message reads table (tracks which driver read which message)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS message_reads (
+            id SERIAL PRIMARY KEY,
+            message_id INTEGER REFERENCES messages(id) ON DELETE CASCADE,
+            driver_id INTEGER REFERENCES candidates(id) ON DELETE CASCADE,
+            read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT unique_driver_message_read UNIQUE (message_id, driver_id)
+        );
+    """)
     conn.commit()
 
     # Seed superuser (yolovchi / yolovchi)
@@ -204,4 +229,73 @@ def get_candidate_by_phone(phone: str) -> Optional[Dict[str, Any]]:
     cursor.close()
     conn.close()
     return format_row(row) if row else None
+
+def save_message(
+    title: str,
+    message: str,
+    type: str = "system",
+    target_type: str = "all",
+    driver_id: Optional[int] = None,
+    sender_type: str = "admin"
+) -> Dict[str, Any]:
+    """Save an admin-sent message to the database."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO messages (title, message, type, target_type, driver_id, sender_type, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+        RETURNING id, title, message, type, target_type, driver_id, sender_type, created_at;
+    """, (title, message, type, target_type, driver_id, sender_type))
+    row = cursor.fetchone()
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return format_row(row)
+
+def get_admin_messages() -> List[Dict[str, Any]]:
+    """Get list of messages sent from Admin Panel."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT m.id, m.title, m.message, m.type, m.target_type, m.driver_id, m.sender_type, m.created_at,
+               c.name as driver_name, c.surname as driver_surname, c.phone as driver_phone
+        FROM messages m
+        LEFT JOIN candidates c ON m.driver_id = c.id
+        ORDER BY m.created_at DESC;
+    """)
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return [format_row(r) for r in rows]
+
+def get_driver_messages(driver_id: int) -> List[Dict[str, Any]]:
+    """Get all messages visible to a specific driver ('all' or targeted to driver_id), with read status."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT m.id, m.title, m.message, m.type, m.target_type, m.created_at,
+               CASE WHEN mr.id IS NOT NULL THEN true ELSE false END as is_read
+        FROM messages m
+        LEFT JOIN message_reads mr ON m.id = mr.message_id AND mr.driver_id = %s
+        WHERE m.target_type = 'all' OR m.driver_id = %s
+        ORDER BY m.created_at DESC;
+    """, (driver_id, driver_id))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return [format_row(r) for r in rows]
+
+def mark_message_as_read(message_id: int, driver_id: int) -> bool:
+    """Mark a message as read by a specific driver."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO message_reads (message_id, driver_id, read_at)
+        VALUES (%s, %s, CURRENT_TIMESTAMP)
+        ON CONFLICT (message_id, driver_id) DO NOTHING;
+    """, (message_id, driver_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return True
 

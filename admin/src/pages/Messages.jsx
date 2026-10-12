@@ -1,29 +1,131 @@
-import React, { useState } from 'react';
-import { Send, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Send, MessageSquare, AlertCircle, CheckCircle2, Info, Bell, RefreshCw, Loader2 } from 'lucide-react';
 import './PagesCommon.css';
 import './Messages.css';
 
+const BACKEND_URL = "http://localhost:8000";
+
 export default function Messages() {
   const [target, setTarget] = useState('all');
+  const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
+  const [msgType, setMsgType] = useState('system');
+  const [drivers, setDrivers] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [successNotice, setSuccessNotice] = useState('');
 
-  const handleSend = (e) => {
+  const fetchDrivers = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/drivers`);
+      if (res.ok) {
+        const data = await res.json();
+        setDrivers(data || []);
+        if (data.length > 0 && !selectedDriverId) {
+          setSelectedDriverId(data[0].id);
+        }
+      }
+    } catch (e) {
+      console.error("Haydovchilarni yuklashda xatolik:", e);
+    }
+  };
+
+  const fetchHistory = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${BACKEND_URL}/api/messages`);
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data || []);
+      }
+    } catch (e) {
+      console.error("Xabarlar tarixini yuklashda xatolik:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDrivers();
+    fetchHistory();
+    const interval = setInterval(fetchHistory, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSend = async (e) => {
     e.preventDefault();
-    if (!message.trim()) return;
-    alert("Xabar yuborildi!");
-    setMessage('');
-  }
+    if (!title.trim() || !message.trim()) {
+      alert("Iltimos, xabar mavzusi va matnini to'liq kiriting!");
+      return;
+    }
+
+    if (target === 'driver' && !selectedDriverId) {
+      alert("Iltimos, haydovchini tanlang!");
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      const payload = {
+        title: title.trim(),
+        message: message.trim(),
+        type: msgType,
+        target_type: target,
+        driver_id: target === 'driver' ? parseInt(selectedDriverId) : null
+      };
+
+      const res = await fetch(`${BACKEND_URL}/api/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        setTitle('');
+        setMessage('');
+        setSuccessNotice("Xabar muvaffaqiyatli yuborildi!");
+        setTimeout(() => setSuccessNotice(''), 3000);
+        fetchHistory();
+      } else {
+        alert("Xabar yuborishda xatolik yuz berdi!");
+      }
+    } catch (err) {
+      console.error("Send message error:", err);
+      alert("Server bilan bog'lanishda xatolik yuz berdi!");
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   return (
     <div className="page-container">
       <div className="messages-layout">
         <div className="glass-card compose-section">
-          <div className="card-header" style={{ marginBottom: '32px' }}>
+          <div className="card-header" style={{ marginBottom: '24px' }}>
             <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <MessageSquare color="var(--primary)" />
               Yangi Xabar Yuborish
             </h2>
           </div>
+
+          {successNotice && (
+            <div style={{
+              background: 'rgba(16, 185, 129, 0.15)',
+              border: '1px solid #10b981',
+              color: '#10b981',
+              padding: '12px 16px',
+              borderRadius: '12px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <CheckCircle2 size={18} />
+              <span>{successNotice}</span>
+            </div>
+          )}
 
           <form onSubmit={handleSend} className="message-form">
             <div className="form-group">
@@ -37,7 +139,7 @@ export default function Messages() {
                     checked={target === 'all'} 
                     onChange={(e) => setTarget(e.target.value)} 
                   />
-                  <span>Barcha haydovchilar</span>
+                  <span>Barcha haydovchilar ({drivers.length} ta)</span>
                 </label>
                 <label className={`radio-label ${target === 'driver' ? 'selected' : ''}`}>
                   <input 
@@ -55,52 +157,118 @@ export default function Messages() {
             {target === 'driver' && (
               <div className="form-group slide-down">
                 <label>Haydovchini tanlang</label>
-                <select className="custom-select">
-                  <option value="1">Ergashboy Masharipov</option>
-                  <option value="2">Anvar Tursunov</option>
+                <select 
+                  className="custom-select"
+                  value={selectedDriverId}
+                  onChange={(e) => setSelectedDriverId(e.target.value)}
+                >
+                  {drivers.length === 0 ? (
+                    <option value="">Tasdiqlangan haydovchilar yo'q</option>
+                  ) : (
+                    drivers.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} {d.surname} ({d.phone})
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
             )}
 
             <div className="form-group">
+              <label>Xabar turi</label>
+              <div className="radio-group">
+                <label className={`radio-label ${msgType === 'system' ? 'selected' : ''}`}>
+                  <input type="radio" value="system" checked={msgType === 'system'} onChange={() => setMsgType('system')} />
+                  <span>📢 Tizim xabari</span>
+                </label>
+                <label className={`radio-label ${msgType === 'alert' ? 'selected' : ''}`}>
+                  <input type="radio" value="alert" checked={msgType === 'alert'} onChange={() => setMsgType('alert')} />
+                  <span>⚠️ Ogohlantirish</span>
+                </label>
+                <label className={`radio-label ${msgType === 'info' ? 'selected' : ''}`}>
+                  <input type="radio" value="info" checked={msgType === 'info'} onChange={() => setMsgType('info')} />
+                  <span>ℹ️ Ma'lumot</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Xabar mavzusi (Sarlavha)</label>
+              <input 
+                type="text"
+                className="custom-select"
+                style={{ height: '48px' }}
+                placeholder="Masalan: Tirbandlik haqida ogohlantirish"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="form-group">
               <label>Xabar matni</label>
               <textarea 
                 className="custom-textarea"
-                rows="6"
-                placeholder="Xabaringizni shu yerga yozing..."
+                rows="5"
+                placeholder="Xabaringizni to'liq shu yerga yozing..."
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
+                required
               ></textarea>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-              <button type="submit" className="btn-send">
-                Yuborish <Send size={18} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <button type="submit" className="btn-send" disabled={isSending}>
+                {isSending ? (
+                  <>Yuborilmoqda... <Loader2 size={18} className="spin" /></>
+                ) : (
+                  <>Yuborish <Send size={18} /></>
+                )}
               </button>
             </div>
           </form>
         </div>
 
         <div className="glass-card history-section">
-          <h3>Oxirgi yuborilgan xabarlar</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h3>Oxirgi yuborilgan xabarlar</h3>
+            <button 
+              onClick={fetchHistory}
+              className="action-btn"
+              style={{ width: '30px', height: '30px', padding: 0 }}
+              title="Yangilash"
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
+
           <div className="history-list">
-            <div className="history-item">
-              <div className="history-header">
-                <span className="history-target">Barchaga</span>
-                <span className="history-date">Kecha, 15:00</span>
+            {history.length === 0 ? (
+              <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                Hozircha xabarlar yuborilmagan
               </div>
-              <p>Hurmatli haydovchilar, bugun soat 18:00 dan boshlab markaziy ko'chada tirbandlik kutilmoqda. Yo'nalishni o'zgartirishingizni so'raymiz.</p>
-            </div>
-            <div className="history-item">
-              <div className="history-header">
-                <span className="history-target">12-marshrut</span>
-                <span className="history-date">2 kun oldin</span>
-              </div>
-              <p>Ertaga bekatlar ro'yxatida o'zgarish bo'ladi, ilovani yangilang.</p>
-            </div>
+            ) : (
+              history.map(item => (
+                <div className="history-item" key={item.id}>
+                  <div className="history-header">
+                    <span className="history-target">
+                      {item.target_type === 'all' 
+                        ? '📢 Barchaga' 
+                        : `👤 ${item.driver_name || 'Haydovchi'} ${item.driver_surname || ''}`}
+                    </span>
+                    <span className="history-date">{item.created_at}</span>
+                  </div>
+                  <h4 style={{ margin: '0 0 6px 0', fontSize: '15px', color: 'var(--text-main)', fontWeight: 600 }}>
+                    {item.title}
+                  </h4>
+                  <p>{item.message}</p>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -180,3 +180,32 @@ async def reset_driver_bot_state(
         logger.error(f"Error resetting driver bot state for {telegram_id}: {e}")
         return False
 
+async def send_driver_notification(
+    telegram_id: int,
+    title: str,
+    message: str,
+    msg_type: str = "system"
+) -> bool:
+    """Send notification about new message to driver's Telegram Bot."""
+    type_emoji = {
+        "alert": "⚠️",
+        "info": "ℹ️",
+        "success": "✅",
+        "system": "📢"
+    }.get(msg_type, "📢")
+
+    text = f"{type_emoji} {title}\n\n{message}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(
+                f"{BASE_URL}/sendMessage",
+                json={
+                    "chat_id": telegram_id,
+                    "text": text
+                }
+            )
+            return res.json().get("ok", False)
+    except Exception as e:
+        logger.warning(f"Could not send telegram message notification to {telegram_id}: {e}")
+        return False
+

@@ -13,12 +13,17 @@ from database import (
     get_candidate_by_phone,
     save_candidate,
     update_candidate_status,
-    delete_candidate
+    delete_candidate,
+    save_message,
+    get_admin_messages,
+    get_driver_messages,
+    mark_message_as_read
 )
 from telegram_service import (
     send_approval_message,
     send_rejection_message,
-    reset_driver_bot_state
+    reset_driver_bot_state,
+    send_driver_notification
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -62,6 +67,13 @@ class CandidateResponse(BaseModel):
     pending_message_id: Optional[int] = None
     created_at: str
     updated_at: str
+
+class MessageCreate(BaseModel):
+    title: str
+    message: str
+    type: Optional[str] = "system"
+    target_type: Optional[str] = "all"
+    driver_id: Optional[int] = None
 
 @app.get("/api/health")
 def health_check():
@@ -191,4 +203,92 @@ def check_driver_status(phone: Optional[str] = None, telegram_id: Optional[int] 
     if not candidate or candidate.get("status") != "approved":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver is not approved or not found")
     return {"status": "approved", "driver": candidate}
+
+@app.get("/api/messages")
+def list_messages():
+    """Admin gets list of all messages sent."""
+    return get_admin_messages()
+
+@app.post("/api/messages", status_code=status.HTTP_201_CREATED)
+async def create_message(payload: MessageCreate):
+    """Admin sends a message to all drivers or a specific driver."""
+    msg = save_message(
+        title=payload.title,
+        message=payload.message,
+        type=payload.type or "system",
+        target_type=payload.target_type or "all",
+        driver_id=payload.driver_id
+    )
+    
+    # Send real-time notification to Telegram Bot
+    if payload.target_type == "driver" and payload.driver_id:
+        driver = get_candidate_by_id(payload.driver_id)
+        if driver and driver.get("telegram_id"):
+            await send_driver_notification(
+                telegram_id=driver["telegram_id"],
+                title=payload.title,
+                message=payload.message,
+                msg_type=payload.type or "system"
+            )
+    elif payload.target_type == "all":
+        approved_drivers = get_candidates(status="approved")
+        for driver in approved_drivers:
+            tg_id = driver.get("telegram_id")
+            if tg_id:
+                try:
+                    await send_driver_notification(
+                        telegram_id=tg_id,
+                        title=payload.title,
+                        message=payload.message,
+                        msg_type=payload.type or "system"
+                    )
+                except Exception:
+                    pass
+
+    return msg
+
+@app.get("/api/drivers/{driver_id}/messages")
+def get_messages_for_single_driver(driver_id: int):
+    """Fetch messages for a specific driver by id."""
+    return get_driver_messages(driver_id)
+
+@app.get("/api/driver-messages")
+def get_driver_messages_by_query(
+    phone: Optional[str] = None,
+    telegram_id: Optional[int] = None,
+    driver_id: Optional[int] = None
+):
+    """Fetch messages for Mini App by phone, telegram_id, or driver_id."""
+    target_driver = None
+    if driver_id:
+        target_driver = get_candidate_by_id(driver_id)
+    elif telegram_id:
+        target_driver = get_candidate_by_telegram_id(telegram_id)
+    elif phone:
+        target_driver = get_candidate_by_phone(phone)
+    
+    target_id = target_driver["id"] if target_driver else 0
+    return get_driver_messages(target_id)
+
+@app.post("/api/messages/{message_id}/read")
+def read_message(
+    message_id: int,
+    phone: Optional[str] = None,
+    telegram_id: Optional[int] = None,
+    driver_id: Optional[int] = None
+):
+    """Mark a message as read by a driver."""
+    d_id = driver_id
+    if not d_id:
+        target_driver = None
+        if telegram_id:
+            target_driver = get_candidate_by_telegram_id(telegram_id)
+        elif phone:
+            target_driver = get_candidate_by_phone(phone)
+        if target_driver:
+            d_id = target_driver["id"]
+    
+    if d_id:
+        mark_message_as_read(message_id, d_id)
+    return {"success": True}
 
