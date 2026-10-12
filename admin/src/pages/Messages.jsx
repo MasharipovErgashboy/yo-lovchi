@@ -97,6 +97,8 @@ export default function Messages() {
     } finally {
       setIsSending(false);
     }
+  };
+
   const formatAdminDate = (dateStr) => {
     if (!dateStr) return '';
     try {
