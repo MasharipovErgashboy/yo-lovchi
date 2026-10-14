@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import logging
 
 from database import (
@@ -17,7 +17,16 @@ from database import (
     save_message,
     get_admin_messages,
     get_driver_messages,
-    mark_message_as_read
+    mark_message_as_read,
+    get_routes,
+    get_route_by_id,
+    create_route,
+    update_route,
+    delete_route,
+    assign_driver_to_route,
+    update_driver_location,
+    get_live_drivers_for_route,
+    get_all_live_drivers
 )
 from telegram_service import (
     send_approval_message,
@@ -74,6 +83,40 @@ class MessageCreate(BaseModel):
     type: Optional[str] = "system"
     target_type: Optional[str] = "all"
     driver_id: Optional[int] = None
+
+class RouteCreate(BaseModel):
+    number: str
+    name: str
+    direction: Optional[str] = ""
+    color: Optional[str] = "var(--route-blue)"
+    price: Optional[str] = "3 000 so'm"
+    stops: Optional[List[Any]] = []
+    polyline: Optional[List[List[float]]] = []
+    is_active: Optional[bool] = True
+
+class RouteUpdate(BaseModel):
+    number: Optional[str] = None
+    name: Optional[str] = None
+    direction: Optional[str] = None
+    color: Optional[str] = None
+    price: Optional[str] = None
+    stops: Optional[List[Any]] = None
+    polyline: Optional[List[List[float]]] = None
+    is_active: Optional[bool] = None
+
+class AssignRouteRequest(BaseModel):
+    route_id: Optional[int] = None
+
+class DriverLocationUpdate(BaseModel):
+    driver_id: Optional[int] = None
+    telegram_id: Optional[int] = None
+    phone: Optional[str] = None
+    route_id: Optional[int] = None
+    latitude: float
+    longitude: float
+    heading: Optional[float] = 0.0
+    speed: Optional[float] = 0.0
+    capacity: Optional[str] = "bosh"
 
 @app.get("/api/health")
 def health_check():
@@ -291,4 +334,118 @@ def read_message(
     if d_id:
         mark_message_as_read(message_id, d_id)
     return {"success": True}
+
+# --- ROUTES & GPS ENDPOINTS ---
+
+@app.get("/api/routes")
+def list_routes(is_active: Optional[bool] = None):
+    """List all routes, optionally filtered by is_active."""
+    return get_routes(is_active=is_active)
+
+@app.get("/api/routes/{route_id}")
+def get_route(route_id: int):
+    """Get single route by ID."""
+    route = get_route_by_id(route_id)
+    if not route:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
+    return route
+
+@app.post("/api/routes", status_code=status.HTTP_201_CREATED)
+def create_new_route(payload: RouteCreate):
+    """Admin creates a new route."""
+    try:
+        route = create_route(
+            number=payload.number,
+            name=payload.name,
+            direction=payload.direction or "",
+            color=payload.color or "var(--route-blue)",
+            price=payload.price or "3 000 so'm",
+            stops=payload.stops or [],
+            polyline=payload.polyline or [],
+            is_active=payload.is_active if payload.is_active is not None else True
+        )
+        return route
+    except Exception as e:
+        logger.error(f"Error creating route: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+@app.put("/api/routes/{route_id}")
+def update_existing_route(route_id: int, payload: RouteUpdate):
+    """Admin updates an existing route."""
+    route = get_route_by_id(route_id)
+    if not route:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
+    
+    updated = update_route(
+        route_id=route_id,
+        number=payload.number,
+        name=payload.name,
+        direction=payload.direction,
+        color=payload.color,
+        price=payload.price,
+        stops=payload.stops,
+        polyline=payload.polyline,
+        is_active=payload.is_active
+    )
+    return updated
+
+@app.delete("/api/routes/{route_id}")
+def delete_existing_route(route_id: int):
+    """Admin deletes a route."""
+    route = get_route_by_id(route_id)
+    if not route:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
+    deleted = delete_route(route_id)
+    return {"success": deleted, "deleted_id": route_id}
+
+@app.post("/api/drivers/{driver_id}/assign-route")
+def assign_route(driver_id: int, payload: AssignRouteRequest):
+    """Assign or unassign a route to an approved driver."""
+    driver = get_candidate_by_id(driver_id)
+    if not driver:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
+    
+    if payload.route_id:
+        route = get_route_by_id(payload.route_id)
+        if not route:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target route not found")
+            
+    success = assign_driver_to_route(driver_id, payload.route_id)
+    return {"success": success, "driver_id": driver_id, "route_id": payload.route_id}
+
+@app.post("/api/driver/location")
+def update_location(payload: DriverLocationUpdate):
+    """Driver mobile/mini-app transmits live GPS coordinates."""
+    target_driver = None
+    if payload.driver_id:
+        target_driver = get_candidate_by_id(payload.driver_id)
+    elif payload.telegram_id:
+        target_driver = get_candidate_by_telegram_id(payload.telegram_id)
+    elif payload.phone:
+        target_driver = get_candidate_by_phone(payload.phone)
+
+    if not target_driver:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
+
+    loc = update_driver_location(
+        driver_id=target_driver["id"],
+        latitude=payload.latitude,
+        longitude=payload.longitude,
+        heading=payload.heading or 0.0,
+        speed=payload.speed or 0.0,
+        capacity=payload.capacity or "bosh",
+        route_id=payload.route_id
+    )
+    return {"success": True, "location": loc}
+
+@app.get("/api/routes/{route_id}/live-drivers")
+def get_route_live_drivers(route_id: int):
+    """Get active online drivers transmitting coordinates for a specific route."""
+    return get_live_drivers_for_route(route_id)
+
+@app.get("/api/live-drivers")
+def get_all_active_drivers():
+    """Get all active online drivers transmitting coordinates across all routes."""
+    return get_all_live_drivers()
+
 

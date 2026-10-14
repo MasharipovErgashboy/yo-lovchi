@@ -1,8 +1,10 @@
 import os
+import re
+import json
 import hashlib
 import secrets
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -90,7 +92,101 @@ def init_db():
             CONSTRAINT unique_driver_message_read UNIQUE (message_id, driver_id)
         );
     """)
+
+    # Routes table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS routes (
+            id SERIAL PRIMARY KEY,
+            number VARCHAR(50) NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            direction VARCHAR(255),
+            color VARCHAR(50) DEFAULT 'var(--route-blue)',
+            price VARCHAR(50) DEFAULT '3 000 so''m',
+            stops JSONB DEFAULT '[]'::jsonb,
+            polyline JSONB DEFAULT '[]'::jsonb,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
+    # Add assigned_route_id to candidates if missing
+    cursor.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'candidates' AND column_name = 'assigned_route_id'
+            ) THEN
+                ALTER TABLE candidates ADD COLUMN assigned_route_id INTEGER REFERENCES routes(id) ON DELETE SET NULL;
+            END IF;
+        END $$;
+    """)
+
+    # Driver live locations table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS driver_locations (
+            driver_id INTEGER PRIMARY KEY REFERENCES candidates(id) ON DELETE CASCADE,
+            route_id INTEGER REFERENCES routes(id) ON DELETE SET NULL,
+            latitude DOUBLE PRECISION NOT NULL,
+            longitude DOUBLE PRECISION NOT NULL,
+            heading DOUBLE PRECISION DEFAULT 0.0,
+            speed DOUBLE PRECISION DEFAULT 0.0,
+            capacity VARCHAR(50) DEFAULT 'bosh',
+            is_online BOOLEAN DEFAULT TRUE,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
     conn.commit()
+
+    # Seed initial routes if empty
+    cursor.execute("SELECT COUNT(*) as cnt FROM routes;")
+    res_cnt = cursor.fetchone()
+    if res_cnt and res_cnt.get("cnt", 0) == 0:
+        default_routes = [
+            {
+                "number": "12",
+                "name": "12-marshrut",
+                "direction": "Andijon (Eski shahar) → Asaka",
+                "color": "var(--route-blue)",
+                "price": "3 000 so'm",
+                "stops": json.dumps([
+                    {"name": "Eski shahar (Bosh bekat)", "raw": "40.7821, 72.3442", "lat": 40.7821, "lng": 72.3442},
+                    {"name": "Navoiy shoh ko'chasi", "raw": "40.7650, 72.3550", "lat": 40.7650, "lng": 72.3550},
+                    {"name": "Viloyat shifoxonasi", "raw": "40.7420, 72.3680", "lat": 40.7420, "lng": 72.3680},
+                    {"name": "Asaka avtoshoxbekat", "raw": "40.6415, 72.2389", "lat": 40.6415, "lng": 72.2389}
+                ]),
+                "polyline": json.dumps([
+                    [40.7821, 72.3442],
+                    [40.7650, 72.3550],
+                    [40.7420, 72.3680],
+                    [40.6415, 72.2389]
+                ])
+            },
+            {
+                "number": "15",
+                "name": "15-marshrut",
+                "direction": "Andijon vokzal → Oltinko'l",
+                "color": "var(--route-green)",
+                "price": "2 500 so'm",
+                "stops": json.dumps([
+                    {"name": "Andijon Temiryo'l Vokzali", "raw": "40.7950, 72.3620", "lat": 40.7950, "lng": 72.3620},
+                    {"name": "Yangi bozor", "raw": "40.7780, 72.3410", "lat": 40.7780, "lng": 72.3410},
+                    {"name": "Oltinko'l markaz", "raw": "40.8010, 72.1850", "lat": 40.8010, "lng": 72.1850}
+                ]),
+                "polyline": json.dumps([
+                    [40.7950, 72.3620],
+                    [40.7780, 72.3410],
+                    [40.8010, 72.1850]
+                ])
+            }
+        ]
+        for r in default_routes:
+            cursor.execute("""
+                INSERT INTO routes (number, name, direction, color, price, stops, polyline)
+                VALUES (%s, %s, %s, %s, %s, %s, %s);
+            """, (r["number"], r["name"], r["direction"], r["color"], r["price"], r["stops"], r["polyline"]))
+        conn.commit()
 
     # Seed superuser (yolovchi / yolovchi)
     cursor.execute("SELECT id FROM users WHERE username = %s;", ('yolovchi',))
@@ -133,10 +229,17 @@ def format_row(row: Dict[str, Any]) -> Dict[str, Any]:
 def get_candidates(status: Optional[str] = None) -> List[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
+    query = """
+        SELECT c.*, r.number as route_number, r.name as route_name, r.color as route_color
+        FROM candidates c
+        LEFT JOIN routes r ON c.assigned_route_id = r.id
+    """
     if status:
-        cursor.execute("SELECT * FROM candidates WHERE status = %s ORDER BY id DESC;", (status,))
+        query += " WHERE c.status = %s ORDER BY c.id DESC;"
+        cursor.execute(query, (status,))
     else:
-        cursor.execute("SELECT * FROM candidates ORDER BY id DESC;")
+        query += " ORDER BY c.id DESC;"
+        cursor.execute(query)
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -298,4 +401,356 @@ def mark_message_as_read(message_id: int, driver_id: int) -> bool:
     cursor.close()
     conn.close()
     return True
+
+# --- ROUTE & GPS FUNCTIONS ---
+
+def parse_coordinate_or_link(raw_text: str) -> Dict[str, Any]:
+    """Parses latitude and longitude from coordinate string or Google/Yandex maps URLs."""
+    if not raw_text:
+        return {"raw": "", "lat": None, "lng": None}
+    
+    text = str(raw_text).strip()
+    
+    # 1. Direct coordinates: 40.7821, 72.3442
+    match = re.search(r'(-?\d{1,2}\.\d{3,})[\s,]+(-?\d{1,3}\.\d{3,})', text)
+    if match:
+        lat = float(match.group(1))
+        lng = float(match.group(2))
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return {"raw": text, "lat": lat, "lng": lng}
+            
+    # 2. Yandex Maps ll parameter (ll=lng,lat)
+    yandex_match = re.search(r'll=(-?\d{1,3}\.\d{3,})(?:%2C|,)(-?\d{1,2}\.\d{3,})', text)
+    if yandex_match:
+        lng = float(yandex_match.group(1))
+        lat = float(yandex_match.group(2))
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return {"raw": text, "lat": lat, "lng": lng}
+
+    return {"raw": text, "lat": None, "lng": None}
+
+def process_stops_and_polyline(stops: List[Any], polyline: Optional[List[Any]] = None) -> Tuple[List[Dict[str, Any]], List[List[float]]]:
+    """Processes stops array and generates/cleans polyline coordinates."""
+    processed_stops = []
+    generated_polyline = []
+
+    for i, s in enumerate(stops):
+        raw_val = ""
+        name_val = f"{i + 1}-bekat"
+        if isinstance(s, dict):
+            raw_val = s.get("raw") or s.get("coordinates") or ""
+            name_val = s.get("name") or name_val
+            lat_val = s.get("lat")
+            lng_val = s.get("lng")
+            if lat_val is not None and lng_val is not None:
+                parsed = {"raw": raw_val, "lat": float(lat_val), "lng": float(lng_val)}
+            else:
+                parsed = parse_coordinate_or_link(raw_val)
+        else:
+            raw_val = str(s)
+            parsed = parse_coordinate_or_link(raw_val)
+
+        stop_obj = {
+            "order": i + 1,
+            "name": name_val,
+            "raw": parsed["raw"],
+            "lat": parsed["lat"],
+            "lng": parsed["lng"]
+        }
+        processed_stops.append(stop_obj)
+        if parsed["lat"] is not None and parsed["lng"] is not None:
+            generated_polyline.append([parsed["lat"], parsed["lng"]])
+
+    # If polyline is explicitly provided, validate it; otherwise use points from stops
+    final_polyline = []
+    if polyline and isinstance(polyline, list) and len(polyline) > 0:
+        for pt in polyline:
+            if isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                try:
+                    final_polyline.append([float(pt[0]), float(pt[1])])
+                except (ValueError, TypeError):
+                    pass
+    if not final_polyline:
+        final_polyline = generated_polyline
+
+    return processed_stops, final_polyline
+
+def get_routes(is_active: Optional[bool] = None) -> List[Dict[str, Any]]:
+    """Get all routes with active drivers count."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    query = """
+        SELECT r.*,
+               COUNT(DISTINCT dl.driver_id) as active_buses
+        FROM routes r
+        LEFT JOIN driver_locations dl ON r.id = dl.route_id 
+             AND dl.is_online = true 
+             AND dl.updated_at >= NOW() - INTERVAL '3 minutes'
+    """
+    if is_active is not None:
+        query += " WHERE r.is_active = %s"
+        query += " GROUP BY r.id ORDER BY r.id ASC;"
+        cursor.execute(query, (is_active,))
+    else:
+        query += " GROUP BY r.id ORDER BY r.id ASC;"
+        cursor.execute(query)
+    
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    result = []
+    for r in rows:
+        row_dict = format_row(r)
+        if isinstance(row_dict.get("stops"), str):
+            try:
+                row_dict["stops"] = json.loads(row_dict["stops"])
+            except:
+                row_dict["stops"] = []
+        if isinstance(row_dict.get("polyline"), str):
+            try:
+                row_dict["polyline"] = json.loads(row_dict["polyline"])
+            except:
+                row_dict["polyline"] = []
+        
+        row_dict["total_stops"] = len(row_dict.get("stops") or [])
+        row_dict["active_buses"] = int(row_dict.get("active_buses") or 0)
+        result.append(row_dict)
+    return result
+
+def get_route_by_id(route_id: int) -> Optional[Dict[str, Any]]:
+    """Get single route by id."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT r.*,
+               COUNT(DISTINCT dl.driver_id) as active_buses
+        FROM routes r
+        LEFT JOIN driver_locations dl ON r.id = dl.route_id 
+             AND dl.is_online = true 
+             AND dl.updated_at >= NOW() - INTERVAL '3 minutes'
+        WHERE r.id = %s
+        GROUP BY r.id;
+    """, (route_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not row:
+        return None
+    row_dict = format_row(row)
+    if isinstance(row_dict.get("stops"), str):
+        try:
+            row_dict["stops"] = json.loads(row_dict["stops"])
+        except:
+            row_dict["stops"] = []
+    if isinstance(row_dict.get("polyline"), str):
+        try:
+            row_dict["polyline"] = json.loads(row_dict["polyline"])
+        except:
+            row_dict["polyline"] = []
+    row_dict["total_stops"] = len(row_dict.get("stops") or [])
+    row_dict["active_buses"] = int(row_dict.get("active_buses") or 0)
+    return row_dict
+
+def create_route(
+    number: str,
+    name: str,
+    direction: Optional[str] = None,
+    color: str = "var(--route-blue)",
+    price: str = "3 000 so'm",
+    stops: Optional[List[Any]] = None,
+    polyline: Optional[List[Any]] = None
+) -> Dict[str, Any]:
+    """Create a new route with parsed stops and polyline."""
+    processed_stops, processed_polyline = process_stops_and_polyline(stops or [], polyline)
+    
+    dir_name = direction or name
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO routes (number, name, direction, color, price, stops, polyline, is_active, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING *;
+    """, (
+        str(number),
+        str(name),
+        str(dir_name),
+        str(color),
+        str(price),
+        json.dumps(processed_stops),
+        json.dumps(processed_polyline)
+    ))
+    row = cursor.fetchone()
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return get_route_by_id(row["id"])
+
+def update_route(
+    route_id: int,
+    number: Optional[str] = None,
+    name: Optional[str] = None,
+    direction: Optional[str] = None,
+    color: Optional[str] = None,
+    price: Optional[str] = None,
+    stops: Optional[List[Any]] = None,
+    polyline: Optional[List[Any]] = None,
+    is_active: Optional[bool] = None
+) -> Optional[Dict[str, Any]]:
+    """Update existing route."""
+    existing = get_route_by_id(route_id)
+    if not existing:
+        return None
+
+    new_number = number if number is not None else existing["number"]
+    new_name = name if name is not None else existing["name"]
+    new_direction = direction if direction is not None else existing["direction"]
+    new_color = color if color is not None else existing["color"]
+    new_price = price if price is not None else existing["price"]
+    new_is_active = is_active if is_active is not None else existing["is_active"]
+
+    if stops is not None or polyline is not None:
+        target_stops = stops if stops is not None else existing.get("stops", [])
+        target_poly = polyline if polyline is not None else existing.get("polyline", [])
+        processed_stops, processed_poly = process_stops_and_polyline(target_stops, target_poly)
+    else:
+        processed_stops = existing.get("stops", [])
+        processed_poly = existing.get("polyline", [])
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE routes
+        SET number = %s, name = %s, direction = %s, color = %s, price = %s,
+            stops = %s, polyline = %s, is_active = %s, updated_at = CURRENT_TIMESTAMP
+        WHERE id = %s
+        RETURNING id;
+    """, (
+        str(new_number),
+        str(new_name),
+        str(new_direction),
+        str(new_color),
+        str(new_price),
+        json.dumps(processed_stops),
+        json.dumps(processed_poly),
+        bool(new_is_active),
+        route_id
+    ))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return get_route_by_id(route_id)
+
+def delete_route(route_id: int) -> bool:
+    """Delete a route."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM routes WHERE id = %s RETURNING id;", (route_id,))
+    deleted = cursor.fetchone()
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return bool(deleted)
+
+def assign_driver_to_route(driver_id: int, route_id: Optional[int]) -> bool:
+    """Assign or unassign an approved driver to a route."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE candidates
+        SET assigned_route_id = %s, updated_at = CURRENT_TIMESTAMP
+        WHERE id = %s
+        RETURNING id;
+    """, (route_id, driver_id))
+    updated = cursor.fetchone()
+    
+    # Also update route_id in driver_locations if exists
+    if updated and route_id:
+        cursor.execute("""
+            UPDATE driver_locations
+            SET route_id = %s
+            WHERE driver_id = %s;
+        """, (route_id, driver_id))
+        
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return bool(updated)
+
+def update_driver_location(
+    driver_id: int,
+    latitude: float,
+    longitude: float,
+    heading: float = 0.0,
+    speed: float = 0.0,
+    capacity: str = "bosh",
+    route_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """Upsert driver real-time GPS location."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # If route_id not supplied, get from candidates
+    target_route_id = route_id
+    if not target_route_id:
+        cursor.execute("SELECT assigned_route_id FROM candidates WHERE id = %s;", (driver_id,))
+        cand = cursor.fetchone()
+        if cand:
+            target_route_id = cand.get("assigned_route_id")
+
+    cursor.execute("""
+        INSERT INTO driver_locations (driver_id, route_id, latitude, longitude, heading, speed, capacity, is_online, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP)
+        ON CONFLICT (driver_id) DO UPDATE
+        SET route_id = COALESCE(EXCLUDED.route_id, driver_locations.route_id),
+            latitude = EXCLUDED.latitude,
+            longitude = EXCLUDED.longitude,
+            heading = EXCLUDED.heading,
+            speed = EXCLUDED.speed,
+            capacity = EXCLUDED.capacity,
+            is_online = true,
+            updated_at = CURRENT_TIMESTAMP
+        RETURNING *;
+    """, (driver_id, target_route_id, latitude, longitude, heading, speed, capacity))
+    row = cursor.fetchone()
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return format_row(row)
+
+def get_live_drivers_for_route(route_id: int) -> List[Dict[str, Any]]:
+    """Get currently active online drivers transmitting GPS for a specific route."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT dl.*, c.name, c.surname, c.phone
+        FROM driver_locations dl
+        JOIN candidates c ON dl.driver_id = c.id
+        WHERE dl.route_id = %s 
+          AND dl.is_online = true 
+          AND dl.updated_at >= NOW() - INTERVAL '3 minutes'
+        ORDER BY dl.updated_at DESC;
+    """, (route_id,))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return [format_row(r) for r in rows]
+
+def get_all_live_drivers() -> List[Dict[str, Any]]:
+    """Get all currently active online drivers across all routes."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT dl.*, c.name, c.surname, c.phone, r.number as route_number, r.name as route_name, r.color as route_color
+        FROM driver_locations dl
+        JOIN candidates c ON dl.driver_id = c.id
+        LEFT JOIN routes r ON dl.route_id = r.id
+        WHERE dl.is_online = true 
+          AND dl.updated_at >= NOW() - INTERVAL '3 minutes'
+        ORDER BY dl.updated_at DESC;
+    """)
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return [format_row(r) for r in rows]
 

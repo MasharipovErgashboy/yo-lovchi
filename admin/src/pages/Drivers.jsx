@@ -19,6 +19,24 @@ export default function Drivers() {
   const [isSendingMsg, setIsSendingMsg] = useState(false);
   const [sendSuccess, setSendSuccess] = useState(false);
 
+  // Marshrut biriktirish holati
+  const [availableRoutes, setAvailableRoutes] = useState([]);
+  const [driverToAssignRoute, setDriverToAssignRoute] = useState(null);
+  const [selectedRouteId, setSelectedRouteId] = useState('');
+  const [isAssigningRoute, setIsAssigningRoute] = useState(false);
+
+  const fetchRoutes = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/routes`);
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableRoutes(data || []);
+      }
+    } catch (e) {
+      console.error("Marshrutlarni yuklashda xatolik:", e);
+    }
+  };
+
   const fetchApproved = async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/drivers`);
@@ -26,10 +44,15 @@ export default function Drivers() {
         const apiDrivers = await res.json();
         const formatted = (apiDrivers || []).map(d => ({
           id: d.id,
+          telegram_id: d.telegram_id,
           name: `${d.name} ${d.surname}`,
           phone: d.phone,
           status: 'Online',
-          route: 'Biriktirilmagan',
+          assigned_route_id: d.assigned_route_id,
+          routeNumber: d.route_number,
+          routeName: d.route_name,
+          routeColor: d.route_color,
+          routeDisplay: d.route_number ? `${d.route_number}-marshrut` : 'Biriktirilmagan',
           startTime: d.updated_at ? (d.updated_at.includes(' ') ? d.updated_at.split(' ')[1] : d.updated_at) : '08:00',
           endTime: null,
           tripsToday: 0,
@@ -109,8 +132,36 @@ export default function Drivers() {
     }
   };
 
+  const handleAssignRoute = async (e) => {
+    e.preventDefault();
+    if (!driverToAssignRoute) return;
+    setIsAssigningRoute(true);
+    try {
+      const payload = {
+        route_id: selectedRouteId ? parseInt(selectedRouteId) : null
+      };
+      const res = await fetch(`${BACKEND_URL}/api/drivers/${driverToAssignRoute.id}/assign-route`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        setDriverToAssignRoute(null);
+        await fetchApproved();
+      } else {
+        alert("Marshrutni biriktirishda xatolik yuz berdi!");
+      }
+    } catch (err) {
+      console.error("Assign route error:", err);
+      alert("Server bilan bog'lanishda xatolik yuz berdi!");
+    } finally {
+      setIsAssigningRoute(false);
+    }
+  };
+
   useEffect(() => {
     fetchApproved();
+    fetchRoutes();
     // 4 soniyada bir avtomatik yangilash (Polling)
     const interval = setInterval(fetchApproved, 4000);
     return () => clearInterval(interval);
@@ -177,13 +228,39 @@ export default function Drivers() {
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <MapPin size={14} className="text-muted" />
-                        {driver.route}
-                      </div>
+                      <button 
+                        className="action-btn"
+                        style={{ 
+                          borderColor: driver.routeColor ? `${driver.routeColor}66` : 'rgba(255,255,255,0.1)',
+                          color: driver.routeColor || 'var(--text-main)',
+                          fontSize: '13px',
+                          padding: '4px 10px',
+                          borderRadius: '8px',
+                          gap: '6px'
+                        }}
+                        onClick={() => {
+                          setDriverToAssignRoute(driver);
+                          setSelectedRouteId(driver.assigned_route_id ? String(driver.assigned_route_id) : '');
+                        }}
+                        title="Marshrutni biriktirish yoki o'zgartirish"
+                      >
+                        <Route size={14} />
+                        {driver.routeDisplay}
+                      </button>
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <button 
+                          className="action-btn"
+                          style={{ color: '#8b5cf6', borderColor: 'rgba(139, 92, 246, 0.3)' }}
+                          onClick={() => {
+                            setDriverToAssignRoute(driver);
+                            setSelectedRouteId(driver.assigned_route_id ? String(driver.assigned_route_id) : '');
+                          }}
+                          title="Marshrutga biriktirish"
+                        >
+                          <Route size={16} /> Marshrut
+                        </button>
                         <button 
                           className="action-btn"
                           onClick={() => setSelectedDriver(driver)}
@@ -469,6 +546,98 @@ export default function Drivers() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Marshrutga biriktirish Modali */}
+      {driverToAssignRoute && (
+        <div className="modal-overlay" onClick={() => setDriverToAssignRoute(null)}>
+          <div className="modal-content glass-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+            <div className="modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Route size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '17px' }}>Marshrutga biriktirish</h3>
+                  <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>{driverToAssignRoute.name}</p>
+                </div>
+              </div>
+              <button className="close-btn" onClick={() => setDriverToAssignRoute(null)}><X size={24} /></button>
+            </div>
+
+            <form onSubmit={handleAssignRoute}>
+              <div className="modal-body" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: '500' }}>
+                    Qaysi marshrutga biriktirilsin?
+                  </label>
+                  <select
+                    className="custom-input"
+                    value={selectedRouteId}
+                    onChange={e => setSelectedRouteId(e.target.value)}
+                    style={{ width: '100%', boxSizing: 'border-box' }}
+                  >
+                    <option value="">-- Biriktirilmagan (marshrutdan yechish) --</option>
+                    {availableRoutes.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.number}-marshrut: {r.name} {r.direction ? `(${r.direction})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedRouteId && (
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '13px' }}>
+                    <div style={{ color: 'var(--text-muted)', marginBottom: '4px' }}>Tanlangan marshrut:</div>
+                    {(() => {
+                      const found = availableRoutes.find(r => String(r.id) === String(selectedRouteId));
+                      if (!found) return null;
+                      return (
+                        <div>
+                          <strong style={{ color: found.color && found.color.startsWith('#') ? found.color : 'var(--primary)' }}>
+                            {found.number}-marshrut: {found.name}
+                          </strong>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>{found.direction}</div>
+                          <div style={{ color: '#10b981', fontSize: '12px', marginTop: '4px' }}>
+                            Yo'lkira: {found.price} | Bekatlar: {found.stops ? found.stops.length : 0} ta
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-footer" style={{ padding: '16px 24px' }}>
+                <button 
+                  type="button"
+                  className="action-btn"
+                  style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={() => setDriverToAssignRoute(null)}
+                  disabled={isAssigningRoute}
+                >
+                  Bekor qilish
+                </button>
+                <button 
+                  type="submit"
+                  className="action-btn"
+                  style={{
+                    flex: 1,
+                    justifyContent: 'center',
+                    background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                    border: 'none',
+                    color: '#fff',
+                    fontWeight: '600'
+                  }}
+                  disabled={isAssigningRoute}
+                >
+                  {isAssigningRoute ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                  {isAssigningRoute ? "Saqlanmoqda..." : "Saqlash"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
