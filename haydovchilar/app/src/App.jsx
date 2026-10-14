@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Navigation, MapPin } from 'lucide-react'
 import './App.css'
 import Header from './components/Header'
 import LocationToggle from './components/LocationToggle'
@@ -11,6 +11,8 @@ import DriverMap from './components/DriverMap'
 
 function App() {
   const [activeTab, setActiveTab] = useState('joylashuv') // 'joylashuv' | 'xabarlar' | 'profil'
+  const [subTab, setSubTab] = useState('joylashuv') // 'joylashuv' | 'xarita'
+  const [navToStartActive, setNavToStartActive] = useState(false)
   const [locationEnabled, setLocationEnabled] = useState(false)
   const [capacity, setCapacity] = useState('bosh') // 'bosh' | 'ozroq' | 'tola'
   const [isKickedOut, setIsKickedOut] = useState(false)
@@ -270,32 +272,88 @@ function App() {
     );
   }
 
+  // Navigate to start stop (triggered when user clicks "Ketdik" in distance modal)
+  const handleNavigateToStart = (coords) => {
+    if (coords && coords.lat && coords.lng) {
+      setDriverLocation(prev => ({
+        ...(prev || {}),
+        latitude: coords.lat,
+        longitude: coords.lng
+      }));
+    } else if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setDriverLocation({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            heading: pos.coords.heading || 0,
+            speed: pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0
+          });
+        },
+        () => {},
+        { enableHighAccuracy: true }
+      );
+    }
+    setNavToStartActive(true);
+    setSubTab('xarita');
+  };
+
   return (
     <div className="app-container">
       {activeTab === 'joylashuv' && (
-        <div className="tab-content joylashuv-tab">
+        <div className={`tab-content joylashuv-tab ${subTab === 'xarita' ? 'is-map-view' : ''}`}>
           <Header assignedRoute={assignedRoute} />
           
-          {/* Real Leaflet Map showing assigned route and ONLY the driver's own vehicle */}
-          <DriverMap assignedRoute={assignedRoute} driverLocation={driverLocation} />
+          {/* Subtabs Switcher: Joylashuv vs Xarita */}
+          <div className="driver-subtabs-bar">
+            <button
+              type="button"
+              className={`driver-subtab-pill ${subTab === 'joylashuv' ? 'active' : ''}`}
+              onClick={() => setSubTab('joylashuv')}
+            >
+              <Navigation size={15} style={{ transform: 'rotate(45deg)' }} />
+              <span>Joylashuv</span>
+            </button>
+            <button
+              type="button"
+              className={`driver-subtab-pill ${subTab === 'xarita' ? 'active' : ''}`}
+              onClick={() => setSubTab('xarita')}
+            >
+              <MapPin size={15} />
+              <span>Xarita</span>
+            </button>
+          </div>
 
-          {/* Location Toggle Button with 1km distance check */}
-          <LocationToggle 
-            enabled={locationEnabled} 
-            setEnabled={handleLocationToggle} 
-            assignedRoute={assignedRoute}
-            onLocationUpdate={(pos) => {
-              setDriverLocation({
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-                heading: pos.coords.heading || 0,
-                speed: pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0
-              });
-            }}
-          />
+          {subTab === 'joylashuv' ? (
+            <>
+              {/* Location Toggle Button with 1km distance check */}
+              <LocationToggle 
+                enabled={locationEnabled} 
+                setEnabled={handleLocationToggle} 
+                assignedRoute={assignedRoute}
+                onNavigateToStart={handleNavigateToStart}
+                onLocationUpdate={(pos) => {
+                  setDriverLocation({
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    heading: pos.coords.heading || 0,
+                    speed: pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0
+                  });
+                }}
+              />
 
-          {/* Instant Capacity Selector */}
-          <CapacitySelector selected={capacity} onSelect={handleCapacityChange} />
+              {/* Instant Capacity Selector */}
+              <CapacitySelector selected={capacity} onSelect={handleCapacityChange} />
+            </>
+          ) : (
+            /* Full Real Leaflet Map showing assigned route and ONLY the driver's own vehicle */
+            <DriverMap 
+              assignedRoute={assignedRoute} 
+              driverLocation={driverLocation} 
+              navToStartActive={navToStartActive}
+              onClearNavToStart={() => setNavToStartActive(false)}
+            />
+          )}
         </div>
       )}
       

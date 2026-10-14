@@ -66,7 +66,13 @@ function calculateMinDistanceToRoute(driverLat, driverLng, route) {
   return minDist === Infinity ? 0 : minDist;
 }
 
-export default function LocationToggle({ enabled, setEnabled, assignedRoute, onLocationUpdate }) {
+export default function LocationToggle({ 
+  enabled, 
+  setEnabled, 
+  assignedRoute, 
+  onLocationUpdate,
+  onNavigateToStart
+}) {
   const [checking, setChecking] = useState(false);
   const [distanceError, setDistanceError] = useState(null);
 
@@ -90,7 +96,8 @@ export default function LocationToggle({ enabled, setEnabled, assignedRoute, onL
             if (minDist > 1000) {
               setDistanceError({
                 distanceKm: (minDist / 1000).toFixed(1),
-                routeName: assignedRoute.name || `${assignedRoute.number}-marshrut`
+                routeName: assignedRoute.name || `${assignedRoute.number}-marshrut`,
+                driverCoords: { lat: driverLat, lng: driverLng }
               });
               return;
             }
@@ -182,10 +189,26 @@ export default function LocationToggle({ enabled, setEnabled, assignedRoute, onL
             </div>
             <button 
               className="btn-primary" 
-              onClick={() => setDistanceError(null)}
-              style={{ marginTop: '16px', width: '100%' }}
+              onClick={() => {
+                const coords = distanceError.driverCoords;
+                setDistanceError(null);
+                if (onNavigateToStart) {
+                  onNavigateToStart(coords);
+                }
+              }}
+              style={{ 
+                marginTop: '16px', 
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                fontSize: '16px',
+                fontWeight: '700'
+              }}
             >
-              Tushundim
+              <span>Ketdik</span>
+              <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />
             </button>
           </div>
         </div>
