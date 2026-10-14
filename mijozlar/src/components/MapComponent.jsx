@@ -17,16 +17,33 @@ import {
 } from 'lucide-react';
 import './MapComponent.css';
 
-// CartoDB Voyager Clean Light Map Tiles (matches Image 3 aesthetic)
-const MAP_TILES = {
-  voyager: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+// Clean, high-resolution Map Tile Providers (100% Free of any API Key watermarks)
+const MAP_LAYERS = {
+  google: {
+    name: "Google Xarita",
+    url: 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=uz',
+    subdomains: ['0', '1', '2', '3'],
+    maxZoom: 20
+  },
+  satellite: {
+    name: "Google Yo'ldosh",
+    url: 'https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=uz',
+    subdomains: ['0', '1', '2', '3'],
+    maxZoom: 20
+  },
+  osm: {
+    name: "OpenStreetMap",
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: ['a', 'b', 'c'],
+    maxZoom: 19
+  }
 };
 
 export default function MapComponent({ initialRouteId = null, onBackToRoutes }) {
   const mapContainerRef = useRef(null);
   const mapInstance = useRef(null);
   const layerGroupRef = useRef(null);
+  const tileLayerRef = useRef(null);
 
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
@@ -34,7 +51,8 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
   const [liveDrivers, setLiveDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentStopIndex, setCurrentStopIndex] = useState(2); // e.g. 5-bekat (hozir)
-  const [tileType, setTileType] = useState('voyager');
+  const [activeLayer, setActiveLayer] = useState('google');
+  const [toastMessage, setToastMessage] = useState(null);
 
   // Fetch routes and live drivers from backend
   const fetchData = async () => {
@@ -75,21 +93,22 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
     return () => clearInterval(interval);
   }, []);
 
-  // Initialize Leaflet Map
+  // Initialize Leaflet Map with Google Maps Tiles
   useEffect(() => {
     if (!mapContainerRef.current) return;
     if (mapInstance.current) return;
 
-    // Default center: Tashkent / Andijon region
     const map = L.map(mapContainerRef.current, {
-      center: [41.35, 69.35],
-      zoom: 12,
+      center: [40.7821, 72.3442],
+      zoom: 13,
       zoomControl: false,
       attributionControl: false
     });
 
-    L.tileLayer(MAP_TILES[tileType], {
-      maxZoom: 19
+    const initialLayer = MAP_LAYERS[activeLayer] || MAP_LAYERS.google;
+    tileLayerRef.current = L.tileLayer(initialLayer.url, {
+      subdomains: initialLayer.subdomains,
+      maxZoom: initialLayer.maxZoom
     }).addTo(map);
 
     layerGroupRef.current = L.layerGroup().addTo(map);
@@ -100,6 +119,18 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       mapInstance.current = null;
     };
   }, []);
+
+  // Update map tile layer when activeLayer changes
+  useEffect(() => {
+    if (!mapInstance.current || !tileLayerRef.current) return;
+    const layer = MAP_LAYERS[activeLayer] || MAP_LAYERS.google;
+    tileLayerRef.current.remove();
+    tileLayerRef.current = L.tileLayer(layer.url, {
+      subdomains: layer.subdomains,
+      maxZoom: layer.maxZoom
+    }).addTo(mapInstance.current);
+    tileLayerRef.current.bringToBack();
+  }, [activeLayer]);
 
   // Update map polyline, stops, and buses whenever selectedRoute or liveDrivers changes
   useEffect(() => {
@@ -381,6 +412,37 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
     const currentIndex = routes.findIndex(r => r.id === selectedRoute.id);
     const nextIndex = (currentIndex + 1) % routes.length;
     setSelectedRoute(routes[nextIndex]);
+    setToastMessage(`${routes[nextIndex].name} ga o'tildi`);
+    setTimeout(() => setToastMessage(null), 2000);
+  };
+
+  // Toggle map layers (Google Xarita -> Google Yo'ldosh -> OpenStreetMap)
+  const handleToggleLayer = () => {
+    const layerKeys = ['google', 'satellite', 'osm'];
+    const nextIdx = (layerKeys.indexOf(activeLayer) + 1) % layerKeys.length;
+    const nextLayer = layerKeys[nextIdx];
+    setActiveLayer(nextLayer);
+    setToastMessage(`Qatlam: ${MAP_LAYERS[nextLayer].name}`);
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  // Reset view to fit the route bounds
+  const handleResetView = () => {
+    if (!mapInstance.current || !selectedRoute) return;
+    let polyPoints = [];
+    if (Array.isArray(selectedRoute.polyline) && selectedRoute.polyline.length >= 2) {
+      polyPoints = selectedRoute.polyline.map(p => [p[0], p[1]]);
+    } else if (Array.isArray(selectedRoute.stops)) {
+      polyPoints = selectedRoute.stops.filter(s => s.lat && s.lng).map(s => [s.lat, s.lng]);
+    }
+    if (polyPoints.length > 0) {
+      mapInstance.current.fitBounds(L.latLngBounds(polyPoints), {
+        paddingTopLeft: [40, 40],
+        paddingBottomRight: [40, 260]
+      });
+      setToastMessage("Marshrut markazlashtirildi");
+      setTimeout(() => setToastMessage(null), 2000);
+    }
   };
 
   // Timeline stops
@@ -393,6 +455,13 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       {/* 1. Leaflet Map Container */}
       <div ref={mapContainerRef} className="map-leaflet-canvas" />
 
+      {/* Floating Mode Toast */}
+      {toastMessage && (
+        <div className="map-toast-notification">
+          {toastMessage}
+        </div>
+      )}
+
       {/* 2. Floating Action Controls (Right side - exactly like Image 3) */}
       <div className="floating-map-controls">
         <button className="map-ctrl-btn" onClick={handleLocateMe} title="Mening joylashuvim">
@@ -400,19 +469,15 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         </button>
         <button 
           className="map-ctrl-btn" 
-          onClick={() => {
-            handleSwitchRoute();
-          }} 
-          title="Boshqa marshrutga o'tish"
+          onClick={handleToggleLayer} 
+          title="Xarita qatlamini almashtirish (Google / Yo'ldosh / OSM)"
         >
           <Layers size={18} color="#0f172a" />
         </button>
         <button 
           className="map-ctrl-btn" 
-          onClick={() => {
-            if (mapInstance.current) mapInstance.current.setZoom(mapInstance.current.getZoom() + 1);
-          }} 
-          title="Kattalashtirish"
+          onClick={handleResetView} 
+          title="Marshrutni markazlashtirish"
         >
           <Compass size={18} color="#0f172a" />
         </button>
@@ -445,14 +510,31 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
           <div className="sheet-route-header">
             <div 
               className="sheet-route-badge" 
-              style={{ backgroundColor: selectedRoute.color && selectedRoute.color.startsWith('#') ? selectedRoute.color : '#0066FF' }}
+              style={{ 
+                backgroundColor: selectedRoute.color && selectedRoute.color.startsWith('#') ? selectedRoute.color : '#0066FF',
+                cursor: routes.length > 1 ? 'pointer' : 'default'
+              }}
+              onClick={handleSwitchRoute}
+              title={routes.length > 1 ? "Boshqa marshrutga o'tish" : ""}
             >
               {selectedRoute.number}
             </div>
             
-            <div className="sheet-route-details">
-              <h3 className="sheet-route-title">{selectedRoute.name}</h3>
-              <p className="sheet-route-direction">{selectedRoute.direction || 'Toshkent → Chirchiq'}</p>
+            <div 
+              className="sheet-route-details"
+              onClick={handleSwitchRoute}
+              style={{ cursor: routes.length > 1 ? 'pointer' : 'default' }}
+              title={routes.length > 1 ? "Boshqa marshrutga o'tish" : ""}
+            >
+              <h3 className="sheet-route-title">
+                {selectedRoute.name}
+                {routes.length > 1 && (
+                  <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '6px', fontWeight: 500 }}>
+                    ({routes.findIndex(r => r.id === selectedRoute.id) + 1}/{routes.length})
+                  </span>
+                )}
+              </h3>
+              <p className="sheet-route-direction">{selectedRoute.direction || 'Andijon (Eski shahar) → Asaka'}</p>
             </div>
 
             <button className="sheet-direction-btn" onClick={handleReverseDirection}>
