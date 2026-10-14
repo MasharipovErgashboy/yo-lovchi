@@ -999,6 +999,22 @@
   margin: 0 !important;
 }
 
+/* In fullscreen mode, position top banner and route pill below Telegram's "Yopish" button */
+.driver-fullmap-container.is-fullscreen .driver-route-top-pill {
+  top: max(108px, calc(var(--app-top-inset, 64px) + 40px)) !important;
+  left: 14px !important;
+}
+
+.driver-fullmap-container.is-fullscreen .driver-nav-banner {
+  top: max(108px, calc(var(--app-top-inset, 64px) + 40px)) !important;
+  left: 14px !important;
+  right: 14px !important;
+}
+
+.driver-fullmap-container.is-fullscreen .driver-map-bottom-bar {
+  bottom: calc(20px + env(safe-area-inset-bottom, 16px)) !important;
+}
+
 .driver-fullmap-canvas {
   width: 100%;
   height: 100%;
@@ -1170,12 +1186,25 @@
 /* Floating Action Controls on Right */
 .driver-map-action-controls {
   position: absolute;
-  bottom: 84px;
+  bottom: 20px;
   right: 12px;
   z-index: 990;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: bottom 0.2s ease;
+}
+
+.driver-map-action-controls.has-bottom-btn {
+  bottom: 84px;
+}
+
+.driver-fullmap-container.is-fullscreen .driver-map-action-controls {
+  bottom: calc(20px + env(safe-area-inset-bottom, 16px)) !important;
+}
+
+.driver-fullmap-container.is-fullscreen .driver-map-action-controls.has-bottom-btn {
+  bottom: calc(88px + env(safe-area-inset-bottom, 16px)) !important;
 }
 
 .driver-fab-btn {

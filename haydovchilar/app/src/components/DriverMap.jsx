@@ -475,7 +475,7 @@ export default function DriverMap({
       )}
 
       {/* Floating Action Controls on Right */}
-      <div className="driver-map-action-controls">
+      <div className={`driver-map-action-controls ${navToStartActive ? 'has-bottom-btn' : ''}`}>
         <button 
           className="driver-fab-btn" 
           onClick={handleToggleFullscreen} 
@@ -499,18 +499,20 @@ export default function DriverMap({
         </div>
       </div>
 
-      {/* Bottom Floating Ketdik Button: Zoom in and follow movement */}
-      <div className="driver-map-bottom-bar">
-        <button 
-          type="button"
-          className={`driver-ketdik-btn ${isFollowing ? 'is-following' : ''}`}
-          onClick={handleToggleFollow}
-        >
-          <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />
-          <span>{isFollowing ? "Kuzatilmoqda (Harakatda)" : "Ketdik"}</span>
-          {isFollowing && <span className="driver-ketdik-live-badge">Jonli</span>}
-        </button>
-      </div>
+      {/* Bottom Floating Ketdik Button: ONLY show when navigating to Bosh bekat */}
+      {navToStartActive && (
+        <div className="driver-map-bottom-bar">
+          <button 
+            type="button"
+            className={`driver-ketdik-btn ${isFollowing ? 'is-following' : ''}`}
+            onClick={handleToggleFollow}
+          >
+            <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />
+            <span>{isFollowing ? "Kuzatilmoqda (Harakatda)" : "Ketdik"}</span>
+            {isFollowing && <span className="driver-ketdik-live-badge">Jonli</span>}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
