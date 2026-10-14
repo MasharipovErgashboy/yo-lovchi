@@ -29,7 +29,7 @@ function App() {
   };
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${activeTab === 'xarita' ? 'map-mode' : ''}`}>
       <Header activeTab={activeTab} setActiveTab={setActiveTab} />
       
       <main className="main-content">

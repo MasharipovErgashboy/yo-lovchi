@@ -1,15 +1,18 @@
-.map-wrapper {
-  position: relative;
-  width: 100%;
-  height: calc(100vh - 120px);
-  min-height: 480px;
-  border-radius: 16px;
+/* Fullscreen Map Wrapper */
+.fullscreen-map-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  background-color: #f1f5f9;
+  background-color: #e2e8f0;
+  z-index: 1;
 }
 
-.google-map-canvas {
+.map-leaflet-canvas {
   width: 100%;
   height: 100%;
   position: absolute;
@@ -18,211 +21,441 @@
   z-index: 1;
 }
 
-.map-loading, .map-error {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+/* Custom Stop Marker */
+.stop-marker-wrapper {
+  background: transparent;
+  border: none;
+}
+
+.custom-stop-marker {
+  width: 16px;
+  height: 16px;
+  background-color: #ffffff;
+  border: 3px solid #0066FF;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0, 102, 255, 0.4);
+  transition: transform 0.2s;
+}
+
+.custom-stop-marker:hover {
+  transform: scale(1.3);
+}
+
+.custom-stop-marker.is-active-stop {
+  border-color: #0066FF;
+  box-shadow: 0 0 0 4px rgba(0, 102, 255, 0.25);
+}
+
+/* Custom Bus Marker */
+.bus-marker-wrapper {
+  background: transparent;
+  border: none;
+}
+
+.custom-bus-marker {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  background-color: rgba(248, 250, 252, 0.9);
-  color: var(--text-primary);
-  font-weight: 500;
-  z-index: 10;
-  padding: 20px;
-  text-align: center;
 }
 
-/* Route Filter Pills Bar */
-.route-filter-bar {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
-  z-index: 10;
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: none; /* Firefox */
-}
-.route-filter-bar::-webkit-scrollbar {
-  display: none; /* Chrome, Safari */
-}
-
-.route-filter-pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background-color: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  padding: 8px 14px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.route-filter-pill.active {
-  background-color: var(--blue-primary);
-  color: #ffffff;
-  border-color: var(--blue-primary);
-  box-shadow: 0 4px 12px rgba(0, 102, 255, 0.25);
-}
-
-.pill-badge {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-
-/* Floating Status Bar */
-.map-floating-status {
-  position: absolute;
-  bottom: 20px;
-  left: 16px;
-  right: 16px;
-  z-index: 10;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  pointer-events: none;
-}
-
-.status-badge-live {
-  pointer-events: auto;
-  background-color: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(8px);
-  color: #ffffff;
-  padding: 10px 16px;
-  border-radius: 24px;
-  font-size: 13px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.live-dot {
-  width: 10px;
-  height: 10px;
+.bus-circle-icon {
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background-color: #10b981;
-  box-shadow: 0 0 8px #10b981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  animation: busPulse 2s infinite ease-in-out;
 }
 
-.locate-me-btn {
-  pointer-events: auto;
+@keyframes busPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+.bus-badge-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  margin-bottom: -6px;
+  z-index: 2;
+  white-space: nowrap;
+}
+
+/* Active Bus Speech Bubble (Matching Image 3) */
+.active-bus-speech-bubble {
+  position: absolute;
+  top: -68px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #0066FF;
+  color: #ffffff;
+  padding: 8px 14px;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 102, 255, 0.4);
+  white-space: nowrap;
+  text-align: center;
+  z-index: 10;
+}
+
+.active-bus-speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid #0066FF;
+}
+
+.bubble-title {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.bubble-sub {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.bubble-eta {
+  font-size: 14px;
+  font-weight: 800;
+  margin-top: 2px;
+}
+
+/* Floating Action Controls on Right Side (Matching Image 3) */
+.floating-map-controls {
+  position: absolute;
+  top: 86px;
+  right: 16px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.map-ctrl-btn {
   width: 44px;
   height: 44px;
   border-radius: 50%;
   background-color: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  border: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--blue-primary);
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.locate-me-btn:hover {
-  transform: scale(1.05);
-  background-color: #f8fafc;
+.map-ctrl-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
 }
 
-/* Selected Driver Quick Card (Bottom Sheet Preview) */
-.driver-popup-card {
+/* Floating Legend Box (Bottom Left above sheet - Matching Image 3) */
+.floating-legend-box {
   position: absolute;
-  bottom: 74px;
+  bottom: 250px;
   left: 16px;
-  right: 16px;
-  z-index: 20;
+  z-index: 1000;
+  background-color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  padding: 10px 14px;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.legend-icon {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-arrow {
+  font-size: 11px;
+}
+
+.legend-icon.blue {
+  color: #0066FF;
+}
+
+.legend-icon.green {
+  color: #10B981;
+}
+
+/* Bottom Sheet Card (Matching Image 3) */
+.map-bottom-sheet {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
   background-color: #ffffff;
-  border-radius: 16px;
-  padding: 16px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  animation: slideUp 0.25s ease-out;
+  border-top-left-radius: 28px;
+  border-top-right-radius: 28px;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.12);
+  padding: 12px 20px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: sheetSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 
-.driver-popup-header {
+.sheet-drag-handle {
+  width: 44px;
+  height: 5px;
+  background-color: #e2e8f0;
+  border-radius: 3px;
+  margin: 0 auto 4px auto;
+}
+
+/* Route Header */
+.sheet-route-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
 }
 
-.driver-avatar-circle {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+.sheet-route-badge {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 102, 255, 0.3);
 }
 
-.close-popup-btn {
-  background: transparent;
-  border: none;
-  font-size: 16px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 4px;
+.sheet-route-details {
+  flex: 1;
+  min-width: 0;
 }
 
-.driver-popup-stats {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.sheet-route-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: #0f172a;
 }
 
-.stat-pill {
+.sheet-route-direction {
+  margin: 3px 0 0 0;
+  font-size: 13px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-direction-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  background-color: #f1f5f9;
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.call-driver-btn {
-  margin-left: auto;
-  background-color: var(--blue-primary);
-  color: #ffffff;
-  text-decoration: none;
+  background-color: #f0f7ff;
+  color: #0066FF;
+  border: none;
   padding: 8px 14px;
-  border-radius: 10px;
+  border-radius: 20px;
   font-size: 13px;
-  font-weight: 600;
-  transition: opacity 0.2s;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
 }
 
-.call-driver-btn:hover {
-  opacity: 0.9;
+.sheet-direction-btn:hover {
+  background-color: #e0effe;
+}
+
+/* Stops Timeline Slider */
+.sheet-stops-timeline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.timeline-nav-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #f1f5f9;
+  border: none;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.timeline-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.timeline-nav-btn:hover:not(:disabled) {
+  background-color: #e2e8f0;
+}
+
+.timeline-track-container {
+  flex: 1;
+  position: relative;
+  padding: 10px 0 24px 0;
+}
+
+.timeline-track-line {
+  position: absolute;
+  top: 15px;
+  left: 12px;
+  right: 12px;
+  height: 3px;
+  background-color: #e2e8f0;
+  border-radius: 2px;
+}
+
+.timeline-track-fill {
+  height: 100%;
+  background-color: #0066FF;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.timeline-stops-points {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  z-index: 2;
+}
+
+.timeline-stop-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  width: 50px;
+}
+
+.stop-point-circle {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.point-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #cbd5e1;
+  transition: all 0.2s;
+}
+
+.point-dot.past {
+  background-color: #0066FF;
+}
+
+.current-bus-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: #0066FF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.25);
+  animation: busBadgeBounce 1s infinite alternate ease-in-out;
+}
+
+@keyframes busBadgeBounce {
+  from { transform: translateY(0); }
+  to { transform: translateY(-3px); }
+}
+
+.stop-name-label {
+  font-size: 10px;
+  color: #64748b;
+  text-align: center;
+  line-height: 1.2;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.timeline-stop-item.active .stop-name-label {
+  color: #0f172a;
+  font-weight: 800;
+}
+
+/* Bottom Stats 3-Column Grid */
+.sheet-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.sheet-stat-card {
+  background-color: #f8fafc;
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.stat-card-title.green {
+  color: #10B981;
+}
+
+.stat-card-subtitle {
+  font-size: 11px;
+  color: #64748b;
+  padding-left: 22px;
 }

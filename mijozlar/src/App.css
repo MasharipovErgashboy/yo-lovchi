@@ -4,6 +4,12 @@
   margin: 0 auto;
 }
 
+.app-container.map-mode {
+  padding: 0;
+  max-width: 100%;
+  margin: 0;
+}
+
 .header-container {
   background-color: var(--white);
   border-radius: 12px;
@@ -364,4 +370,18 @@
 
 .send-btn:hover {
   background: #0052cc;
+}
+
+.header-container.header-floating-on-map {
+  position: fixed;
+  top: 14px;
+  left: 16px;
+  right: 16px;
+  max-width: 480px;
+  margin: 0 auto;
+  z-index: 2000;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.8);
 }
