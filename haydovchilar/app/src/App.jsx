@@ -126,6 +126,59 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Real-time GPS location transmitter when locationEnabled is true
+  useEffect(() => {
+    if (!locationEnabled) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const phone = params.get('phone');
+    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+
+    if (!phone && !tgUserId) return;
+
+    const sendPosition = (position) => {
+      const payload = {
+        telegram_id: tgUserId || null,
+        phone: phone || null,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        heading: position.coords.heading || 0.0,
+        speed: position.coords.speed ? Math.round(position.coords.speed * 3.6) : 0.0,
+        capacity: capacity
+      };
+
+      fetch('/api/driver/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(err => console.error("GPS send error:", err));
+    };
+
+    let watchId = null;
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true });
+      watchId = navigator.geolocation.watchPosition(
+        sendPosition,
+        (err) => console.warn("Watch position error:", err),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
+      );
+    }
+
+    // Periodic ping every 5 seconds as well
+    const interval = setInterval(() => {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true });
+      }
+    }, 5000);
+
+    return () => {
+      if (watchId !== null && "geolocation" in navigator) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      clearInterval(interval);
+    };
+  }, [locationEnabled, capacity]);
+
   if (isKickedOut) {
     return (
       <div style={{

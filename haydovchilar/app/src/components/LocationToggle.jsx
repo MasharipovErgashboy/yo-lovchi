@@ -7,14 +7,14 @@ export default function LocationToggle({ enabled, setEnabled }) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
             setEnabled(true);
-            alert(`Joylashuv aniqlandi va tizimga yuborildi!\nKenglik: ${position.coords.latitude.toFixed(4)}\nUzunlik: ${position.coords.longitude.toFixed(4)}`);
           },
           (error) => {
-            alert("Joylashuvni aniqlashda xatolik: " + error.message);
-          }
+            alert("Joylashuvni aniqlash uchun ruxsat bering: " + error.message);
+          },
+          { enableHighAccuracy: true }
         );
       } else {
-        alert("Brauzeringiz joylashuvni qollab-quvvatlamaydi.");
+        alert("Qurilmangizda joylashuvni aniqlash mavjud emas.");
       }
     } else {
       setEnabled(false);
