@@ -189,9 +189,9 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       ];
     }
 
-    // 1. Draw glowing background polyline and main blue polyline
+    // 1. Draw glowing background polyline and main polyline
     L.polyline(polyPoints, {
-      color: '#0066FF',
+      color: routeColor,
       weight: 6,
       opacity: 0.9,
       lineCap: 'round',
@@ -200,9 +200,9 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
 
     // Subtle outline / glow
     L.polyline(polyPoints, {
-      color: 'rgba(0, 102, 255, 0.25)',
+      color: routeColor,
       weight: 12,
-      opacity: 0.5,
+      opacity: 0.25,
       lineCap: 'round',
       lineJoin: 'round'
     }).addTo(layerGroup);
@@ -315,7 +315,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
           </div>
           <div class="active-bus-speech-bubble">
             <div class="bubble-title">${selectedRoute.number}-marshrut</div>
-            <div class="bubble-sub">5-bekatga yaqin</div>
+            <div class="bubble-sub">${stops[Math.min(currentStopIndex, stops.length - 1)]?.name || 'Bekatga yaqin'}</div>
             <div class="bubble-eta">4 daq</div>
           </div>
         </div>

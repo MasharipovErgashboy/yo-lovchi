@@ -3,10 +3,14 @@ import re
 import json
 import hashlib
 import secrets
+import urllib.request
+import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 import psycopg2
 from psycopg2.extras import RealDictCursor
+
+logger = logging.getLogger("yolovchi_database")
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", 5432))
@@ -404,35 +408,100 @@ def mark_message_as_read(message_id: int, driver_id: int) -> bool:
 
 # --- ROUTE & GPS FUNCTIONS ---
 
+def extract_coords_from_text(text: str) -> Tuple[Optional[float], Optional[float]]:
+    """Extracts latitude and longitude from any coordinate or URL string."""
+    if not text:
+        return None, None
+        
+    # 1. Google 3d/4d params (exact pin coordinates)
+    m = re.search(r'!3d(-?\d{1,2}\.\d{2,})!4d(-?\d{1,3}\.\d{2,})', text)
+    if m:
+        lat, lng = float(m.group(1)), float(m.group(2))
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return lat, lng
+    
+    # 2. @lat,lng
+    m = re.search(r'@(-?\d{1,2}\.\d{2,}),(-?\d{1,3}\.\d{2,})', text)
+    if m:
+        lat, lng = float(m.group(1)), float(m.group(2))
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return lat, lng
+        
+    # 3. /search/lat,+lng or ?q=lat,lng
+    m = re.search(r'(?:search/|[?&]q=)(-?\d{1,2}\.\d{2,})[,\s\+]+(-?\d{1,3}\.\d{2,})', text)
+    if m:
+        lat, lng = float(m.group(1)), float(m.group(2))
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return lat, lng
+
+    # 4. Yandex ll=lng,lat
+    m = re.search(r'll=(-?\d{1,3}\.\d{2,})(?:%2C|,)(-?\d{1,2}\.\d{2,})', text)
+    if m:
+        lng, lat = float(m.group(1)), float(m.group(2))
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return lat, lng
+
+    # 5. Direct coordinate string: lat, lng
+    m = re.search(r'(-?\d{1,2}\.\d{2,})[\s,]+(-?\d{1,3}\.\d{2,})', text)
+    if m:
+        lat, lng = float(m.group(1)), float(m.group(2))
+        if -90 <= lat <= 90 and -180 <= lng <= 180:
+            return lat, lng
+
+    return None, None
+
 def parse_coordinate_or_link(raw_text: str) -> Dict[str, Any]:
-    """Parses latitude and longitude from coordinate string or Google/Yandex maps URLs."""
+    """Parses latitude and longitude from coordinate string or Google/Yandex maps URLs, following short URLs if needed."""
     if not raw_text:
         return {"raw": "", "lat": None, "lng": None}
     
     text = str(raw_text).strip()
     
-    # 1. Direct coordinates: 40.7821, 72.3442
-    match = re.search(r'(-?\d{1,2}\.\d{3,})[\s,]+(-?\d{1,3}\.\d{3,})', text)
-    if match:
-        lat = float(match.group(1))
-        lng = float(match.group(2))
-        if -90 <= lat <= 90 and -180 <= lng <= 180:
-            return {"raw": text, "lat": lat, "lng": lng}
-            
-    # 2. Yandex Maps ll parameter (ll=lng,lat)
-    yandex_match = re.search(r'll=(-?\d{1,3}\.\d{3,})(?:%2C|,)(-?\d{1,2}\.\d{3,})', text)
-    if yandex_match:
-        lng = float(yandex_match.group(1))
-        lat = float(yandex_match.group(2))
-        if -90 <= lat <= 90 and -180 <= lng <= 180:
-            return {"raw": text, "lat": lat, "lng": lng}
+    # Fast path: check if text already contains direct coordinates
+    lat, lng = extract_coords_from_text(text)
+    if lat is not None and lng is not None:
+        return {"raw": text, "lat": lat, "lng": lng}
+        
+    # If it is a web URL, try to follow redirects (especially short links like maps.app.goo.gl, goo.gl, etc.)
+    if text.startswith("http://") or text.startswith("https://"):
+        try:
+            req = urllib.request.Request(
+                text,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            )
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                final_url = resp.geturl()
+                lat, lng = extract_coords_from_text(final_url)
+                if lat is not None and lng is not None:
+                    return {"raw": text, "lat": lat, "lng": lng}
+        except Exception as e:
+            logger.warning(f"Error resolving map link redirect for {text}: {e}")
 
     return {"raw": text, "lat": None, "lng": None}
+
+def fetch_road_polyline(coords_lat_lng: List[List[float]]) -> List[List[float]]:
+    """Fetches real road-following polyline using OSRM for points [ [lat, lng], ... ]."""
+    if len(coords_lat_lng) < 2:
+        return coords_lat_lng
+    try:
+        # OSRM expects: {lng1},{lat1};{lng2},{lat2}...
+        coord_str = ";".join([f"{c[1]},{c[0]}" for c in coords_lat_lng])
+        url = f"https://router.project-osrm.org/route/v1/driving/{coord_str}?overview=full&geometries=geojson"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Yolovchi-App/1.0'})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode())
+            if data.get("code") == "Ok" and data.get("routes"):
+                geo_coords = data["routes"][0]["geometry"]["coordinates"]
+                # geojson is [lng, lat], convert back to [lat, lng] for Leaflet
+                return [[round(pt[1], 6), round(pt[0], 6)] for pt in geo_coords]
+    except Exception as e:
+        logger.warning(f"OSRM road routing fallback: {e}")
+    return coords_lat_lng
 
 def process_stops_and_polyline(stops: List[Any], polyline: Optional[List[Any]] = None) -> Tuple[List[Dict[str, Any]], List[List[float]]]:
     """Processes stops array and generates/cleans polyline coordinates."""
     processed_stops = []
-    generated_polyline = []
+    stop_points = []
 
     for i, s in enumerate(stops):
         raw_val = ""
@@ -459,9 +528,9 @@ def process_stops_and_polyline(stops: List[Any], polyline: Optional[List[Any]] =
         }
         processed_stops.append(stop_obj)
         if parsed["lat"] is not None and parsed["lng"] is not None:
-            generated_polyline.append([parsed["lat"], parsed["lng"]])
+            stop_points.append([parsed["lat"], parsed["lng"]])
 
-    # If polyline is explicitly provided, validate it; otherwise use points from stops
+    # If polyline is explicitly provided, validate it; otherwise fetch road polyline from stops
     final_polyline = []
     if polyline and isinstance(polyline, list) and len(polyline) > 0:
         for pt in polyline:
@@ -470,8 +539,10 @@ def process_stops_and_polyline(stops: List[Any], polyline: Optional[List[Any]] =
                     final_polyline.append([float(pt[0]), float(pt[1])])
                 except (ValueError, TypeError):
                     pass
-    if not final_polyline:
-        final_polyline = generated_polyline
+    if not final_polyline and len(stop_points) >= 2:
+        final_polyline = fetch_road_polyline(stop_points)
+    elif not final_polyline:
+        final_polyline = stop_points
 
     return processed_stops, final_polyline
 
