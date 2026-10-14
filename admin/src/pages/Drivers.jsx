@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { User, Activity, MapPin, X, Route, Clock, Car, Loader2, RefreshCw, Trash2, AlertTriangle, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
 import './PagesCommon.css';
 
@@ -299,7 +300,7 @@ export default function Drivers() {
       </div>
 
       {/* Faoliyati Modal */}
-      {selectedDriver && (
+      {selectedDriver && typeof document !== 'undefined' && createPortal(
         <div className="modal-overlay" onClick={() => setSelectedDriver(null)}>
           <div className="modal-content glass-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '450px' }}>
             <div className="modal-header">
@@ -351,11 +352,12 @@ export default function Drivers() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* O'chirishni Tasdiqlash Modali */}
-      {driverToDelete && (
+      {driverToDelete && typeof document !== 'undefined' && createPortal(
         <div className="modal-overlay" onClick={() => !isDeleting && setDriverToDelete(null)}>
           <div className="modal-content glass-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px' }}>
             <div className="modal-header">
@@ -396,11 +398,12 @@ export default function Drivers() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Muayyan Haydovchiga Xabar Yuborish Modali */}
-      {driverToMessage && (
+      {driverToMessage && typeof document !== 'undefined' && createPortal(
         <div className="modal-overlay" onClick={() => !isSendingMsg && setDriverToMessage(null)}>
           <div className="modal-content glass-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
             <div className="modal-header">
@@ -547,11 +550,12 @@ export default function Drivers() {
               </form>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Marshrutga biriktirish Modali */}
-      {driverToAssignRoute && (
+      {driverToAssignRoute && typeof document !== 'undefined' && createPortal(
         <div className="modal-overlay" onClick={() => setDriverToAssignRoute(null)}>
           <div className="modal-content glass-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
             <div className="modal-header">
@@ -638,7 +642,8 @@ export default function Drivers() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

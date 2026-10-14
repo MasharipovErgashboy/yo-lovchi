@@ -209,7 +209,6 @@
   padding: 32px 40px;
   overflow-y: auto;
   position: relative;
-  z-index: 1;
 }
 
 /* Scrollbar styling for content area */

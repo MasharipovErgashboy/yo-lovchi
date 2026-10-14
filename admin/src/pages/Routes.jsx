@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, RefreshCw, Navigation } from 'lucide-react';
 import './PagesCommon.css';
 import './Routes.css';
@@ -282,7 +283,7 @@ export default function RoutesPage() {
       )}
 
       {/* Add / Edit Route Modal */}
-      {isAddModalOpen && (
+      {isAddModalOpen && typeof document !== 'undefined' && createPortal(
         <div className="modal-overlay" onClick={closeAddModal}>
           <div className="modal-content glass-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '580px', maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
@@ -438,7 +439,8 @@ export default function RoutesPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <style>{`

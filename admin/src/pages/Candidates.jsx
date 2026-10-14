@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Eye, Check, X, Phone, User, Loader2, RefreshCw } from 'lucide-react';
 import './PagesCommon.css';
 
@@ -185,7 +186,7 @@ export default function Candidates() {
       </div>
 
       {/* Nomzod ma'lumotlari Modali */}
-      {selectedCandidate && (
+      {selectedCandidate && typeof document !== 'undefined' && createPortal(
         <div className="modal-overlay" onClick={() => !actionLoading && setSelectedCandidate(null)}>
           <div className="modal-content glass-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
@@ -235,7 +236,8 @@ export default function Candidates() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
