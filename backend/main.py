@@ -25,6 +25,8 @@ from database import (
     delete_route,
     assign_driver_to_route,
     update_driver_location,
+    set_driver_offline,
+    update_driver_capacity,
     get_live_drivers_for_route,
     get_all_live_drivers
 )
@@ -117,6 +119,17 @@ class DriverLocationUpdate(BaseModel):
     heading: Optional[float] = 0.0
     speed: Optional[float] = 0.0
     capacity: Optional[str] = "bosh"
+
+class DriverCapacityRequest(BaseModel):
+    driver_id: Optional[int] = None
+    telegram_id: Optional[int] = None
+    phone: Optional[str] = None
+    capacity: str
+
+class DriverOfflineRequest(BaseModel):
+    driver_id: Optional[int] = None
+    telegram_id: Optional[int] = None
+    phone: Optional[str] = None
 
 @app.get("/api/health")
 def health_check():
@@ -236,7 +249,7 @@ async def remove_driver(driver_id: int):
 
 @app.get("/api/drivers/check")
 def check_driver_status(phone: Optional[str] = None, telegram_id: Optional[int] = None):
-    """Check if driver is currently approved in the system (used by Mini App)."""
+    """Check if driver is currently approved in the system and return full assigned route."""
     candidate = None
     if telegram_id:
         candidate = get_candidate_by_telegram_id(telegram_id)
@@ -245,7 +258,63 @@ def check_driver_status(phone: Optional[str] = None, telegram_id: Optional[int] 
     
     if not candidate or candidate.get("status") != "approved":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver is not approved or not found")
-    return {"status": "approved", "driver": candidate}
+    
+    # Resolve assigned route
+    assigned_route = None
+    if candidate.get("assigned_route_id"):
+        assigned_route = get_route_by_id(candidate["assigned_route_id"])
+    
+    # If no route is assigned yet, check active routes and assign to the first active route
+    if not assigned_route:
+        all_routes = get_routes(active_only=True)
+        if all_routes:
+            first_route = all_routes[0]
+            assign_driver_to_route(candidate["id"], first_route["id"])
+            assigned_route = first_route
+            candidate["assigned_route_id"] = first_route["id"]
+            candidate["route_number"] = first_route.get("number")
+            candidate["route_name"] = first_route.get("name")
+            candidate["route_color"] = first_route.get("color")
+
+    return {
+        "status": "approved",
+        "driver": candidate,
+        "assigned_route": assigned_route
+    }
+
+@app.post("/api/driver/capacity")
+def set_capacity(payload: DriverCapacityRequest):
+    """Driver instantly changes vehicle capacity (bosh, ozroq, tola)."""
+    target_driver = None
+    if payload.driver_id:
+        target_driver = get_candidate_by_id(payload.driver_id)
+    elif payload.telegram_id:
+        target_driver = get_candidate_by_telegram_id(payload.telegram_id)
+    elif payload.phone:
+        target_driver = get_candidate_by_phone(payload.phone)
+
+    if not target_driver:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
+
+    success = update_driver_capacity(target_driver["id"], payload.capacity)
+    return {"success": success, "driver_id": target_driver["id"], "capacity": payload.capacity}
+
+@app.post("/api/driver/offline")
+def set_offline(payload: DriverOfflineRequest):
+    """Driver turns off GPS tracking."""
+    target_driver = None
+    if payload.driver_id:
+        target_driver = get_candidate_by_id(payload.driver_id)
+    elif payload.telegram_id:
+        target_driver = get_candidate_by_telegram_id(payload.telegram_id)
+    elif payload.phone:
+        target_driver = get_candidate_by_phone(payload.phone)
+
+    if not target_driver:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
+
+    success = set_driver_offline(target_driver["id"])
+    return {"success": success, "driver_id": target_driver["id"], "is_online": False}
 
 @app.get("/api/messages")
 def list_messages():

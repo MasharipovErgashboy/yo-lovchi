@@ -4,10 +4,10 @@ import './App.css'
 import Header from './components/Header'
 import LocationToggle from './components/LocationToggle'
 import CapacitySelector from './components/CapacitySelector'
-import ActionButtons from './components/ActionButtons'
 import BottomNav from './components/BottomNav'
 import Messages from './components/Messages'
 import Profile from './components/Profile'
+import DriverMap from './components/DriverMap'
 
 function App() {
   const [activeTab, setActiveTab] = useState('joylashuv') // 'joylashuv' | 'xabarlar' | 'profil'
@@ -15,6 +15,8 @@ function App() {
   const [capacity, setCapacity] = useState('bosh') // 'bosh' | 'ozroq' | 'tola'
   const [isKickedOut, setIsKickedOut] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [assignedRoute, setAssignedRoute] = useState(null)
+  const [driverLocation, setDriverLocation] = useState(null)
 
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
@@ -67,7 +69,7 @@ function App() {
     }
   }, []);
 
-  // Real-time check if driver still exists in system
+  // Real-time check if driver still exists in system & fetch assigned route
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const phone = params.get('phone');
@@ -89,13 +91,19 @@ function App() {
               window.Telegram.WebApp.close();
             }
           }, 2000);
+        } else if (res.ok) {
+          const data = await res.json();
+          if (data && data.assigned_route) {
+            setAssignedRoute(data.assigned_route);
+          }
         }
       } catch (e) {
         // Network error, skip
       }
     };
 
-    const interval = setInterval(checkStatus, 3000);
+    checkStatus();
+    const interval = setInterval(checkStatus, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -126,6 +134,46 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Instant Capacity Update Handler
+  const handleCapacityChange = (newCapacity) => {
+    setCapacity(newCapacity);
+
+    const params = new URLSearchParams(window.location.search);
+    const phone = params.get('phone');
+    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+
+    fetch('/api/driver/capacity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegram_id: tgUserId || null,
+        phone: phone || null,
+        capacity: newCapacity
+      })
+    }).catch(err => console.error("Capacity change error:", err));
+  };
+
+  // Location Toggle Handler (with offline signal)
+  const handleLocationToggle = (newEnabled) => {
+    setLocationEnabled(newEnabled);
+
+    if (!newEnabled) {
+      // Driver turned off location -> notify backend immediately
+      const params = new URLSearchParams(window.location.search);
+      const phone = params.get('phone');
+      const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+
+      fetch('/api/driver/offline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_id: tgUserId || null,
+          phone: phone || null
+        })
+      }).catch(err => console.error("Offline error:", err));
+    }
+  };
+
   // Real-time GPS location transmitter when locationEnabled is true
   useEffect(() => {
     if (!locationEnabled) return;
@@ -137,13 +185,22 @@ function App() {
     if (!phone && !tgUserId) return;
 
     const sendPosition = (position) => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      const heading = position.coords.heading || 0.0;
+      const speed = position.coords.speed ? Math.round(position.coords.speed * 3.6) : 0.0;
+
+      // Update local state for driver map
+      setDriverLocation({ latitude: lat, longitude: lng, heading, speed });
+
       const payload = {
         telegram_id: tgUserId || null,
         phone: phone || null,
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        heading: position.coords.heading || 0.0,
-        speed: position.coords.speed ? Math.round(position.coords.speed * 3.6) : 0.0,
+        route_id: assignedRoute?.id || null,
+        latitude: lat,
+        longitude: lng,
+        heading: heading,
+        speed: speed,
         capacity: capacity
       };
 
@@ -164,12 +221,12 @@ function App() {
       );
     }
 
-    // Periodic ping every 5 seconds as well
+    // Periodic ping every 4 seconds
     const interval = setInterval(() => {
       if ("geolocation" in navigator) {
         navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true });
       }
-    }, 5000);
+    }, 4000);
 
     return () => {
       if (watchId !== null && "geolocation" in navigator) {
@@ -177,7 +234,7 @@ function App() {
       }
       clearInterval(interval);
     };
-  }, [locationEnabled, capacity]);
+  }, [locationEnabled, capacity, assignedRoute]);
 
   if (isKickedOut) {
     return (
@@ -217,9 +274,28 @@ function App() {
     <div className="app-container">
       {activeTab === 'joylashuv' && (
         <div className="tab-content joylashuv-tab">
-          <Header />
-          <LocationToggle enabled={locationEnabled} setEnabled={setLocationEnabled} />
-          <CapacitySelector selected={capacity} onSelect={setCapacity} />
+          <Header assignedRoute={assignedRoute} />
+          
+          {/* Real Leaflet Map showing assigned route and ONLY the driver's own vehicle */}
+          <DriverMap assignedRoute={assignedRoute} driverLocation={driverLocation} />
+
+          {/* Location Toggle Button with 1km distance check */}
+          <LocationToggle 
+            enabled={locationEnabled} 
+            setEnabled={handleLocationToggle} 
+            assignedRoute={assignedRoute}
+            onLocationUpdate={(pos) => {
+              setDriverLocation({
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+                heading: pos.coords.heading || 0,
+                speed: pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0
+              });
+            }}
+          />
+
+          {/* Instant Capacity Selector */}
+          <CapacitySelector selected={capacity} onSelect={handleCapacityChange} />
         </div>
       )}
       

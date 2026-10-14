@@ -385,3 +385,362 @@
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.8);
 }
+
+/* Vehicles Page & Cards */
+.vehicles-page-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 24px;
+}
+
+.route-switcher-bar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.route-switcher-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.route-tab-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--white);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.route-tab-pill.active {
+  background: var(--white);
+  border-color: var(--blue-primary);
+  color: var(--blue-primary);
+  box-shadow: 0 4px 12px rgba(0, 102, 255, 0.12);
+}
+
+.pill-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pill-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.pill-badge.active {
+  background: #ecfdf5;
+  color: #059669;
+  font-weight: 700;
+}
+
+.vehicles-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 2px;
+}
+
+.vehicles-section-header .section-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 2px 0;
+}
+
+.vehicles-section-header .section-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.vehicles-count-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 102, 255, 0.08);
+  color: var(--blue-primary);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.vehicles-list-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Vehicle Card */
+.vehicle-card {
+  background: var(--white);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+  border: 1px solid #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.vehicle-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
+  border-color: #cbd5e1;
+}
+
+.vehicle-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.vehicle-info-left {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.vehicle-badge-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.vehicle-route-num {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0, 102, 255, 0.25);
+}
+
+.vehicle-rank-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #059669;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 1px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.vehicle-driver-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+
+.vehicle-sub-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-pulsing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #10B981;
+  display: inline-block;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+  animation: pulseDot 2s infinite ease-in-out;
+}
+
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.6; }
+}
+
+.vehicle-eta-block {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+}
+
+.vehicle-eta-val {
+  font-size: 17px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.vehicle-eta-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Stop Info Block */
+.vehicle-stops-block {
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.stop-row-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  flex-shrink: 0;
+}
+
+.stop-row-text {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.stop-row-label {
+  color: #64748b;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.stop-row-val {
+  color: #0f172a;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+/* Card Footer */
+.vehicle-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.vehicle-capacity-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid;
+}
+
+.cap-percent {
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.vehicle-view-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--blue-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.vehicle-view-btn:hover {
+  background: rgba(0, 102, 255, 0.1);
+}
+
+/* Empty & Loading States */
+.vehicles-empty-card {
+  text-align: center;
+  padding: 48px 24px;
+  background: var(--white);
+  border-radius: 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+}
+
+.empty-icon-wrap {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px auto;
+}
+
+.vehicles-empty-card h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 6px 0;
+}
+
+.vehicles-empty-card p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.vehicles-loading-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+

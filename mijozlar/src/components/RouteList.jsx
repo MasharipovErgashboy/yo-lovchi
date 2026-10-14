@@ -1,10 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import RouteCard from './RouteCard';
-import { Loader2, Navigation } from 'lucide-react';
+import VehicleCard from './VehicleCard';
+import { Loader2, Bus, AlertCircle, RefreshCw } from 'lucide-react';
+
+// Distance calculation utility
+function getDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371e3;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 export default function RouteList({ onSelectRoute }) {
   const [routes, setRoutes] = useState([]);
   const [liveDrivers, setLiveDrivers] = useState([]);
+  const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
@@ -14,10 +30,15 @@ export default function RouteList({ onSelectRoute }) {
         fetch('/api/live-drivers')
       ]);
 
+      let routesData = [];
       if (routesRes.ok) {
-        const routesData = await routesRes.json();
+        routesData = await routesRes.json();
         setRoutes(routesData || []);
+        if (routesData.length > 0 && !selectedRouteId) {
+          setSelectedRouteId(routesData[0].id);
+        }
       }
+
       if (driversRes.ok) {
         const driversData = await driversRes.json();
         setLiveDrivers(driversData || []);
@@ -31,76 +52,165 @@ export default function RouteList({ onSelectRoute }) {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 5000);
+    // Fast real-time polling every 3 seconds for instant capacity and movement updates
+    const interval = setInterval(fetchData, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedRouteId]);
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-secondary)' }}>
-        <Loader2 className="animate-spin" size={28} style={{ margin: '0 auto 12px' }} />
-        <p>Marshrutlar yuklanmoqda...</p>
+      <div className="vehicles-loading-state">
+        <Loader2 className="animate-spin" size={28} />
+        <p>Avtomobillar ma'lumotlari yuklanmoqda...</p>
       </div>
     );
   }
 
-  if (routes.length === 0) {
-    return (
-      <div style={{ textAlign: 'center', padding: '48px 20px', background: 'var(--white)', borderRadius: '16px' }}>
-        <Navigation size={40} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
-        <h3>Hozircha marshrutlar mavjud emas</h3>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '6px' }}>
-          Tez orada yangi marshrutlar qo'shiladi.
-        </p>
-      </div>
-    );
-  }
+  const activeRoute = routes.find(r => r.id === selectedRouteId) || routes[0];
 
-  return (
-    <div className="route-list">
-      {routes.map(route => {
-        // Find active drivers on this route
-        const routeDrivers = liveDrivers.filter(d => String(d.route_id) === String(route.id));
-        const activeBusesCount = routeDrivers.length;
-        const stopsCount = Array.isArray(route.stops) ? route.stops.length : 2;
+  // Calculate detailed vehicle info and arrival ETA for all active drivers on this route
+  const activeRouteDrivers = activeRoute
+    ? liveDrivers.filter(d => String(d.route_id) === String(activeRoute.id))
+    : liveDrivers;
 
-        // Capacity text from active drivers
-        let capacityText = "Bo'sh joy ko'p";
-        let capacityPercent = "60-70%";
-        if (activeBusesCount > 0) {
-          const firstCap = routeDrivers[0].capacity;
-          if (firstCap === 'tola') {
-            capacityText = "To'la";
-            capacityPercent = "90-100%";
-          } else if (firstCap === 'ozroq') {
-            capacityText = "O'rtacha joy";
-            capacityPercent = "40-50%";
+  const stops = activeRoute && Array.isArray(activeRoute.stops) ? activeRoute.stops : [];
+
+  const processedVehicles = activeRouteDrivers.map(driver => {
+    let currentStopName = "1-bekat (Bosh bekat)";
+    let nextStopName = "";
+    let etaMinutes = 3;
+
+    if (stops.length > 0 && driver.latitude && driver.longitude) {
+      // Find closest stop
+      let minDist = Infinity;
+      let closestIdx = 0;
+
+      stops.forEach((s, idx) => {
+        if (s && s.lat && s.lng) {
+          const d = getDistanceMeters(driver.latitude, driver.longitude, Number(s.lat), Number(s.lng));
+          if (d < minDist) {
+            minDist = d;
+            closestIdx = idx;
           }
         }
+      });
 
-        const routeColor = route.color && route.color.startsWith('#') ? route.color : 'var(--blue-primary)';
+      const closestStop = stops[closestIdx];
+      const sName = typeof closestStop === 'object' ? closestStop.name : String(closestStop);
+      
+      if (minDist < 120) {
+        currentStopName = `${sName} bekatida`;
+      } else {
+        currentStopName = `${sName} yaqinida`;
+      }
 
-        return (
-          <div 
-            key={route.id} 
-            onClick={() => onSelectRoute && onSelectRoute(route.id)}
-            style={{ cursor: 'pointer' }}
-          >
-            <RouteCard
-              number={route.number}
-              color={routeColor}
-              name={route.name}
-              direction={route.direction}
-              eta={activeBusesCount > 0 ? "5" : "—"}
-              currentStop={1}
-              totalStops={stopsCount}
-              capacity={capacityText}
-              capacityPercent={capacityPercent}
-              activeBuses={activeBusesCount}
+      // Next stop
+      if (closestIdx < stops.length - 1) {
+        const nStop = stops[closestIdx + 1];
+        nextStopName = typeof nStop === 'object' ? nStop.name : String(nStop);
+        const distToNext = getDistanceMeters(driver.latitude, driver.longitude, Number(nStop.lat), Number(nStop.lng));
+        // Urban speed ~400 meters per minute (~25 km/h)
+        etaMinutes = Math.max(1, Math.round(distToNext / 400));
+      } else {
+        nextStopName = "Oxirgi bekat";
+        etaMinutes = 1;
+      }
+    }
+
+    return {
+      driverId: driver.driver_id,
+      driverName: `${driver.name} ${driver.surname}`,
+      phone: driver.phone,
+      routeId: driver.route_id || activeRoute?.id,
+      routeNumber: driver.route_number || activeRoute?.number || "1",
+      routeName: driver.route_name || activeRoute?.name || "Marshrut",
+      routeColor: driver.route_color || activeRoute?.color || "#0066FF",
+      latitude: driver.latitude,
+      longitude: driver.longitude,
+      speed: driver.speed || 0,
+      capacity: driver.capacity || "bosh",
+      currentStopName,
+      nextStopName,
+      etaMinutes
+    };
+  });
+
+  // Sort: Eng tez kelayotgani birinchi chiqadi tepada!
+  processedVehicles.sort((a, b) => a.etaMinutes - b.etaMinutes);
+
+  return (
+    <div className="vehicles-page-container">
+      {/* Route Switcher Tabs */}
+      {routes.length > 0 && (
+        <div className="route-switcher-bar">
+          {routes.map(r => {
+            const isSelected = r.id === activeRoute?.id;
+            const routeCount = liveDrivers.filter(d => String(d.route_id) === String(r.id)).length;
+            const rColor = r.color && r.color.startsWith('#') ? r.color : '#0066FF';
+
+            return (
+              <button
+                key={r.id}
+                className={`route-tab-pill ${isSelected ? 'active' : ''}`}
+                onClick={() => setSelectedRouteId(r.id)}
+              >
+                <span className="pill-num" style={{ backgroundColor: rColor }}>
+                  {r.number}
+                </span>
+                <span className="pill-name">{r.name}</span>
+                <span className={`pill-badge ${routeCount > 0 ? 'active' : ''}`}>
+                  {routeCount} ta
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Header Info Banner */}
+      <div className="vehicles-section-header">
+        <div>
+          <h2 className="section-title">
+            {activeRoute ? `${activeRoute.name} avtomobillari` : "Liniyadagi avtomobillar"}
+          </h2>
+          <p className="section-subtitle">
+            Eng tez yetib keladigan avtomobillar ketma-ketlikda
+          </p>
+        </div>
+        <div className="vehicles-count-chip">
+          <Bus size={15} />
+          <span>{processedVehicles.length} ta faol</span>
+        </div>
+      </div>
+
+      {/* Vehicles List (Sorted by ETA ascending) */}
+      {processedVehicles.length > 0 ? (
+        <div className="vehicles-list-grid">
+          {processedVehicles.map((vehicle, idx) => (
+            <VehicleCard
+              key={vehicle.driverId || idx}
+              rank={idx + 1}
+              vehicle={vehicle}
+              routeColor={activeRoute?.color && activeRoute.color.startsWith('#') ? activeRoute.color : '#0066FF'}
+              onSelectVehicle={(veh) => {
+                if (onSelectRoute) {
+                  onSelectRoute(veh.routeId);
+                }
+              }}
             />
+          ))}
+        </div>
+      ) : (
+        <div className="vehicles-empty-card">
+          <div className="empty-icon-wrap">
+            <Bus size={38} color="#94a3b8" />
           </div>
-        );
-      })}
+          <h3>Hozirda bu marshrutda faol avtomobillar yo'q</h3>
+          <p>
+            Haydovchilar liniyaga chiqib, o'z ilovasida joylashuvni yoqishi bilan bu yerda real vaqtda paydo bo'ladi.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

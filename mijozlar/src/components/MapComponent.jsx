@@ -326,76 +326,30 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
           zIndexOffset: 1000
         });
 
+        let capText = "Bo'sh joy ko'p";
+        let capColor = "#10B981";
+        if (driver.capacity === 'tola') {
+          capText = "To'la";
+          capColor = "#EF4444";
+        } else if (driver.capacity === 'ozroq') {
+          capText = "Ozroq joy bor";
+          capColor = "#F59E0B";
+        }
+
         busMarker.bindPopup(`
           <div style="font-family: sans-serif; font-size: 13px; padding: 6px;">
             <strong>${driver.name} ${driver.surname}</strong>
             <div style="color: #64748b; font-size: 12px; margin-top: 2px;">
               ${driver.route_number || selectedRoute.number}-marshrut
             </div>
-            <div style="color: #10b981; font-weight: 600; margin-top: 4px;">
-              ${driver.capacity === 'bosh' ? "Bo'sh joy ko'p" : "O'rtacha joy"}
+            <div style="color: ${capColor}; font-weight: 700; margin-top: 4px;">
+              ${capText}
             </div>
           </div>
         `);
 
         busMarker.addTo(layerGroup);
       });
-    } else {
-      // Demo buses along the polyline so user sees the exact route buses right away
-      const point1 = polyPoints[Math.min(2, polyPoints.length - 1)]; // Near stop 3 (approaching)
-      const point2 = polyPoints[Math.min(4, polyPoints.length - 1)]; // Near stop 5 (leaving)
-      const point0 = polyPoints[0]; // Near start
-
-      // Bus 1: Approaching (Blue)
-      const bus1Html = `
-        <div class="custom-bus-marker approaching">
-          <div class="bus-circle-icon" style="background: #0066FF">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M8 6v6"></path><path d="M15 6v6"></path><path d="M2 12h19.6"></path>
-              <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"></path>
-              <circle cx="7" cy="18" r="2"></circle><circle cx="15" cy="18" r="2"></circle>
-            </svg>
-          </div>
-        </div>
-      `;
-      L.marker(point1, {
-        icon: L.divIcon({ className: 'bus-marker-wrapper', html: bus1Html, iconSize: [36, 36], iconAnchor: [18, 18] }),
-        zIndexOffset: 1000
-      }).addTo(layerGroup);
-
-      // Bus 2: Leaving (Green)
-      const bus2Html = `
-        <div class="custom-bus-marker leaving">
-          <div class="bus-circle-icon" style="background: #10B981">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M8 6v6"></path><path d="M15 6v6"></path><path d="M2 12h19.6"></path>
-              <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"></path>
-              <circle cx="7" cy="18" r="2"></circle><circle cx="15" cy="18" r="2"></circle>
-            </svg>
-          </div>
-        </div>
-      `;
-      L.marker(point2, {
-        icon: L.divIcon({ className: 'bus-marker-wrapper', html: bus2Html, iconSize: [36, 36], iconAnchor: [18, 18] }),
-        zIndexOffset: 900
-      }).addTo(layerGroup);
-
-      // Bus 3: Near start (Green)
-      const bus3Html = `
-        <div class="custom-bus-marker leaving">
-          <div class="bus-circle-icon" style="background: #10B981">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M8 6v6"></path><path d="M15 6v6"></path><path d="M2 12h19.6"></path>
-              <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"></path>
-              <circle cx="7" cy="18" r="2"></circle><circle cx="15" cy="18" r="2"></circle>
-            </svg>
-          </div>
-        </div>
-      `;
-      L.marker(point0, {
-        icon: L.divIcon({ className: 'bus-marker-wrapper', html: bus3Html, iconSize: [36, 36], iconAnchor: [18, 18] }),
-        zIndexOffset: 800
-      }).addTo(layerGroup);
     }
 
     // Auto-fit bounds ONLY on initial load of this route, never on polling interval or user pan/zoom!
@@ -696,23 +650,43 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
               <div className="sheet-stat-card">
                 <div className="stat-card-title green">
                   <Users size={16} />
-                  <span>Bo'sh joy ko'p</span>
+                  <span>
+                    {(() => {
+                      const firstDriver = liveDrivers.find(d => String(d.route_id) === String(selectedRoute.id));
+                      if (!firstDriver) return "Harakatda emas";
+                      if (firstDriver.capacity === 'tola') return "To'la";
+                      if (firstDriver.capacity === 'ozroq') return "Ozroq joy";
+                      return "Bo'sh joy ko'p";
+                    })()}
+                  </span>
                 </div>
-                <div className="stat-card-subtitle">60–70%</div>
+                <div className="stat-card-subtitle">
+                  {(() => {
+                    const firstDriver = liveDrivers.find(d => String(d.route_id) === String(selectedRoute.id));
+                    if (!firstDriver) return "Liniyada emas";
+                    if (firstDriver.capacity === 'tola') return "90–100%";
+                    if (firstDriver.capacity === 'ozroq') return "30–40%";
+                    return "60–70%";
+                  })()}
+                </div>
               </div>
 
               <div className="sheet-stat-card">
                 <div className="stat-card-title">
                   <Bus size={16} />
-                  <span>2 ta avtobus</span>
+                  <span>
+                    {liveDrivers.filter(d => String(d.route_id) === String(selectedRoute.id)).length} ta avtobus
+                  </span>
                 </div>
-                <div className="stat-card-subtitle">Yo'nalishda</div>
+                <div className="stat-card-subtitle">Harakatda</div>
               </div>
 
               <div className="sheet-stat-card">
                 <div className="stat-card-title">
                   <Clock size={16} />
-                  <span>4 daq</span>
+                  <span>
+                    {liveDrivers.filter(d => String(d.route_id) === String(selectedRoute.id)).length > 0 ? "3 daq" : "—"}
+                  </span>
                 </div>
                 <div className="stat-card-subtitle">Yaqin avtobus</div>
               </div>

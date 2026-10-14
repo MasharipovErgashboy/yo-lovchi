@@ -252,7 +252,12 @@ def get_candidates(status: Optional[str] = None) -> List[Dict[str, Any]]:
 def get_candidate_by_id(candidate_id: int) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM candidates WHERE id = %s;", (candidate_id,))
+    cursor.execute("""
+        SELECT c.*, r.number as route_number, r.name as route_name, r.color as route_color
+        FROM candidates c
+        LEFT JOIN routes r ON c.assigned_route_id = r.id
+        WHERE c.id = %s;
+    """, (candidate_id,))
     row = cursor.fetchone()
     cursor.close()
     conn.close()
@@ -261,7 +266,12 @@ def get_candidate_by_id(candidate_id: int) -> Optional[Dict[str, Any]]:
 def get_candidate_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM candidates WHERE telegram_id = %s;", (telegram_id,))
+    cursor.execute("""
+        SELECT c.*, r.number as route_number, r.name as route_name, r.color as route_color
+        FROM candidates c
+        LEFT JOIN routes r ON c.assigned_route_id = r.id
+        WHERE c.telegram_id = %s;
+    """, (telegram_id,))
     row = cursor.fetchone()
     cursor.close()
     conn.close()
@@ -328,9 +338,11 @@ def get_candidate_by_phone(phone: str) -> Optional[Dict[str, Any]]:
     # Normalize phone: extract numbers
     clean_phone = "".join(filter(str.isdigit, phone))
     cursor.execute("""
-        SELECT * FROM candidates 
-        WHERE regexp_replace(phone, '[^0-9]', '', 'g') = %s 
-        OR phone = %s;
+        SELECT c.*, r.number as route_number, r.name as route_name, r.color as route_color
+        FROM candidates c
+        LEFT JOIN routes r ON c.assigned_route_id = r.id
+        WHERE regexp_replace(c.phone, '[^0-9]', '', 'g') = %s 
+        OR c.phone = %s;
     """, (clean_phone, phone))
     row = cursor.fetchone()
     cursor.close()
@@ -796,17 +808,48 @@ def update_driver_location(
     conn.close()
     return format_row(row)
 
+def set_driver_offline(driver_id: int) -> bool:
+    """Mark driver offline in driver_locations."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE driver_locations 
+        SET is_online = false, updated_at = CURRENT_TIMESTAMP
+        WHERE driver_id = %s;
+    """, (driver_id,))
+    updated = cursor.rowcount
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return bool(updated)
+
+def update_driver_capacity(driver_id: int, capacity: str) -> bool:
+    """Update driver vehicle capacity status."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE driver_locations 
+        SET capacity = %s, updated_at = CURRENT_TIMESTAMP
+        WHERE driver_id = %s;
+    """, (capacity, driver_id))
+    updated = cursor.rowcount
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return bool(updated)
+
 def get_live_drivers_for_route(route_id: int) -> List[Dict[str, Any]]:
     """Get currently active online drivers transmitting GPS for a specific route."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT dl.*, c.name, c.surname, c.phone
+        SELECT dl.*, c.name, c.surname, c.phone, r.number as route_number, r.name as route_name, r.color as route_color, r.stops as route_stops, r.polyline as route_polyline
         FROM driver_locations dl
         JOIN candidates c ON dl.driver_id = c.id
+        LEFT JOIN routes r ON dl.route_id = r.id
         WHERE dl.route_id = %s 
           AND dl.is_online = true 
-          AND dl.updated_at >= NOW() - INTERVAL '3 minutes'
+          AND dl.updated_at >= NOW() - INTERVAL '5 minutes'
         ORDER BY dl.updated_at DESC;
     """, (route_id,))
     rows = cursor.fetchall()
@@ -819,12 +862,12 @@ def get_all_live_drivers() -> List[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT dl.*, c.name, c.surname, c.phone, r.number as route_number, r.name as route_name, r.color as route_color
+        SELECT dl.*, c.name, c.surname, c.phone, r.number as route_number, r.name as route_name, r.color as route_color, r.stops as route_stops, r.polyline as route_polyline
         FROM driver_locations dl
         JOIN candidates c ON dl.driver_id = c.id
         LEFT JOIN routes r ON dl.route_id = r.id
         WHERE dl.is_online = true 
-          AND dl.updated_at >= NOW() - INTERVAL '3 minutes'
+          AND dl.updated_at >= NOW() - INTERVAL '5 minutes'
         ORDER BY dl.updated_at DESC;
     """)
     rows = cursor.fetchall()

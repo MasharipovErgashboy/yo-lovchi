@@ -10,7 +10,7 @@ export default function Header({ activeTab, setActiveTab }) {
         onClick={() => setActiveTab('marshrutlar')}
       >
         <Bus size={18} />
-        Marshrutlar
+        Avtomobillar
       </button>
       <button 
         className={`tab-btn ${activeTab === 'xarita' ? 'active' : ''}`}
