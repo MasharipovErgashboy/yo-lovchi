@@ -9,6 +9,8 @@ import {
   ArrowLeftRight, 
   ChevronLeft, 
   ChevronRight, 
+  ChevronDown,
+  ChevronUp,
   Navigation, 
   Layers, 
   Compass, 
@@ -55,6 +57,9 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
   const [currentStopIndex, setCurrentStopIndex] = useState(2); // e.g. 5-bekat (hozir)
   const [activeLayer, setActiveLayer] = useState('google');
   const [toastMessage, setToastMessage] = useState(null);
+  const [isSheetCollapsed, setIsSheetCollapsed] = useState(false);
+  const lastFittedRouteId = useRef(null);
+  const userHasMovedMap = useRef(false);
 
   // Fetch routes and live drivers from backend
   const fetchData = async () => {
@@ -120,6 +125,10 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
 
     layerGroupRef.current = L.layerGroup().addTo(map);
     mapInstance.current = map;
+
+    map.on('movestart dragstart zoomstart', () => {
+      userHasMovedMap.current = true;
+    });
 
     return () => {
       map.remove();
@@ -269,13 +278,6 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
                 <circle cx="15" cy="18" r="2"></circle>
               </svg>
             </div>
-            ${isApproaching ? `
-              <div class="active-bus-speech-bubble">
-                <div class="bubble-title">${selectedRoute.number}-marshrut</div>
-                <div class="bubble-sub">${stops[currentStopIndex]?.name || '5-bekatga yaqin'}</div>
-                <div class="bubble-eta">4 daq</div>
-              </div>
-            ` : ''}
           </div>
         `;
 
@@ -304,12 +306,12 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         busMarker.addTo(layerGroup);
       });
     } else {
-      // Demo buses along the polyline so user sees the exact Image 3 representation right away!
+      // Demo buses along the polyline so user sees the exact route buses right away
       const point1 = polyPoints[Math.min(2, polyPoints.length - 1)]; // Near stop 3 (approaching)
       const point2 = polyPoints[Math.min(4, polyPoints.length - 1)]; // Near stop 5 (leaving)
       const point0 = polyPoints[0]; // Near start
 
-      // Bus 1: Approaching (Blue with Speech Bubble)
+      // Bus 1: Approaching (Blue)
       const bus1Html = `
         <div class="custom-bus-marker approaching">
           <div class="bus-badge-label" style="background: #0066FF">Kelyapti</div>
@@ -319,11 +321,6 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
               <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"></path>
               <circle cx="7" cy="18" r="2"></circle><circle cx="15" cy="18" r="2"></circle>
             </svg>
-          </div>
-          <div class="active-bus-speech-bubble">
-            <div class="bubble-title">${selectedRoute.number}-marshrut</div>
-            <div class="bubble-sub">${stops[Math.min(currentStopIndex, stops.length - 1)]?.name || 'Bekatga yaqin'}</div>
-            <div class="bubble-eta">4 daq</div>
           </div>
         </div>
       `;
@@ -369,12 +366,16 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       }).addTo(layerGroup);
     }
 
-    // Zoom and center bounds around polyline
-    const bounds = L.latLngBounds(polyPoints);
-    mapInstance.current.fitBounds(bounds, {
-      paddingTopLeft: [40, 40],
-      paddingBottomRight: [40, 260] // Leave room for bottom sheet
-    });
+    // Auto-fit bounds ONLY on initial load of this route, never on polling interval or user pan/zoom!
+    if (lastFittedRouteId.current !== selectedRoute.id) {
+      lastFittedRouteId.current = selectedRoute.id;
+      userHasMovedMap.current = false;
+      const bounds = L.latLngBounds(polyPoints);
+      mapInstance.current.fitBounds(bounds, {
+        paddingTopLeft: [40, 40],
+        paddingBottomRight: [40, 260]
+      });
+    }
 
   }, [selectedRoute, liveDrivers, currentStopIndex]);
 
@@ -483,7 +484,10 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       )}
 
       {/* 2. Floating Action Controls (Right side - positioned comfortably lower) */}
-      <div className="floating-map-controls">
+      <div 
+        className="floating-map-controls"
+        style={{ bottom: isSheetCollapsed ? '100px' : '260px' }}
+      >
         <button className="map-ctrl-btn" onClick={handleLocateMe} title="Mening joylashuvim">
           <Navigation size={18} color="#0066FF" />
         </button>
@@ -514,8 +518,11 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         </button>
       </div>
 
-      {/* 3. Floating Legend Box (Bottom Left above sheet - exactly like Image 3) */}
-      <div className="floating-legend-box">
+      {/* 3. Floating Legend Box (Bottom Left above sheet) */}
+      <div 
+        className="floating-legend-box"
+        style={{ bottom: isSheetCollapsed ? '100px' : '260px' }}
+      >
         <div className="legend-row">
           <div className="legend-icon blue">
             <Bus size={14} color="#0066FF" />
@@ -532,10 +539,16 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         </div>
       </div>
 
-      {/* 4. Bottom Sheet Card (Exactly like Image 3) */}
+      {/* 4. Bottom Sheet Card (Collapsible) */}
       {selectedRoute && (
-        <div className="map-bottom-sheet">
-          <div className="sheet-drag-handle"></div>
+        <div className={`map-bottom-sheet ${isSheetCollapsed ? 'is-collapsed' : ''}`}>
+          <div 
+            className="sheet-drag-handle-wrapper"
+            onClick={() => setIsSheetCollapsed(prev => !prev)}
+            title={isSheetCollapsed ? "Kengaytirish" : "Yopish"}
+          >
+            <div className="sheet-drag-handle"></div>
+          </div>
 
           {/* Route Header */}
           <div className="sheet-route-header">
@@ -553,9 +566,9 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
             
             <div 
               className="sheet-route-details"
-              onClick={handleSwitchRoute}
-              style={{ cursor: routes.length > 1 ? 'pointer' : 'default' }}
-              title={routes.length > 1 ? "Boshqa marshrutga o'tish" : ""}
+              onClick={() => setIsSheetCollapsed(prev => !prev)}
+              style={{ cursor: 'pointer' }}
+              title={isSheetCollapsed ? "Kengaytirish" : "Yopish"}
             >
               <h3 className="sheet-route-title">
                 {selectedRoute.name}
@@ -568,94 +581,109 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
               <p className="sheet-route-direction">{selectedRoute.direction || 'Andijon (Eski shahar) → Asaka'}</p>
             </div>
 
-            <button className="sheet-direction-btn" onClick={handleReverseDirection}>
-              <span>Yo'nalish</span>
-              <ArrowLeftRight size={14} />
-            </button>
+            <div className="sheet-header-actions">
+              <button className="sheet-direction-btn" onClick={handleReverseDirection}>
+                <span>Yo'nalish</span>
+                <ArrowLeftRight size={14} />
+              </button>
+
+              <button 
+                className="sheet-toggle-btn"
+                onClick={() => setIsSheetCollapsed(prev => !prev)}
+                title={isSheetCollapsed ? "Kengaytirish" : "Yopish"}
+              >
+                {isSheetCollapsed ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              </button>
+            </div>
           </div>
 
-          {/* Stops Timeline Slider */}
-          <div className="sheet-stops-timeline">
-            <button 
-              className="timeline-nav-btn"
-              onClick={() => setCurrentStopIndex(prev => Math.max(0, prev - 1))}
-              disabled={currentStopIndex === 0}
-            >
-              <ChevronLeft size={16} />
-            </button>
+          {/* Stops Timeline Slider & Stats (Only shown when expanded) */}
+          {!isSheetCollapsed && (
+            <>
+              {/* Stops Timeline Slider */}
+              <div className="sheet-stops-timeline">
+                <button 
+                  className="timeline-nav-btn"
+                  onClick={() => setCurrentStopIndex(prev => Math.max(0, prev - 1))}
+                  disabled={currentStopIndex === 0}
+                >
+                  <ChevronLeft size={16} />
+                </button>
 
-            <div className="timeline-track-container">
-              <div className="timeline-track-line">
-                <div 
-                  className="timeline-track-fill" 
-                  style={{ width: `${(currentStopIndex / (currentStops.length - 1)) * 100}%` }}
-                />
-              </div>
-
-              <div className="timeline-stops-points">
-                {currentStops.map((stopName, idx) => {
-                  const isPast = idx < currentStopIndex;
-                  const isCurrent = idx === currentStopIndex;
-
-                  return (
+                <div className="timeline-track-container">
+                  <div className="timeline-track-line">
                     <div 
-                      key={idx} 
-                      className={`timeline-stop-item ${isCurrent ? 'active' : ''}`}
-                      onClick={() => setCurrentStopIndex(idx)}
-                    >
-                      <div className="stop-point-circle">
-                        {isCurrent ? (
-                          <div className="current-bus-badge">
-                            <Bus size={12} color="#ffffff" />
+                      className="timeline-track-fill" 
+                      style={{ width: `${(currentStopIndex / (currentStops.length - 1)) * 100}%` }}
+                    />
+                  </div>
+
+                  <div className="timeline-stops-points">
+                    {currentStops.map((stopName, idx) => {
+                      const isPast = idx < currentStopIndex;
+                      const isCurrent = idx === currentStopIndex;
+
+                      return (
+                        <div 
+                          key={idx} 
+                          className={`timeline-stop-item ${isCurrent ? 'active' : ''}`}
+                          onClick={() => setCurrentStopIndex(idx)}
+                        >
+                          <div className="stop-point-circle">
+                            {isCurrent ? (
+                              <div className="current-bus-badge">
+                                <Bus size={12} color="#ffffff" />
+                              </div>
+                            ) : (
+                              <div className={`point-dot ${isPast ? 'past' : ''}`}></div>
+                            )}
                           </div>
-                        ) : (
-                          <div className={`point-dot ${isPast ? 'past' : ''}`}></div>
-                        )}
-                      </div>
-                      <span className="stop-name-label">
-                        {stopName}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+                          <span className="stop-name-label">
+                            {stopName}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
-            <button 
-              className="timeline-nav-btn"
-              onClick={() => setCurrentStopIndex(prev => Math.min(currentStops.length - 1, prev + 1))}
-              disabled={currentStopIndex === currentStops.length - 1}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-
-          {/* Bottom Stats 3-Column Grid */}
-          <div className="sheet-stats-grid">
-            <div className="sheet-stat-card">
-              <div className="stat-card-title green">
-                <Users size={16} />
-                <span>Bo'sh joy ko'p</span>
+                <button 
+                  className="timeline-nav-btn"
+                  onClick={() => setCurrentStopIndex(prev => Math.min(currentStops.length - 1, prev + 1))}
+                  disabled={currentStopIndex === currentStops.length - 1}
+                >
+                  <ChevronRight size={16} />
+                </button>
               </div>
-              <div className="stat-card-subtitle">60–70%</div>
-            </div>
 
-            <div className="sheet-stat-card">
-              <div className="stat-card-title">
-                <Bus size={16} />
-                <span>2 ta avtobus</span>
-              </div>
-              <div className="stat-card-subtitle">Yo'nalishda</div>
-            </div>
+              {/* Bottom Stats 3-Column Grid */}
+              <div className="sheet-stats-grid">
+                <div className="sheet-stat-card">
+                  <div className="stat-card-title green">
+                    <Users size={16} />
+                    <span>Bo'sh joy ko'p</span>
+                  </div>
+                  <div className="stat-card-subtitle">60–70%</div>
+                </div>
 
-            <div className="sheet-stat-card">
-              <div className="stat-card-title">
-                <Clock size={16} />
-                <span>4 daq</span>
+                <div className="sheet-stat-card">
+                  <div className="stat-card-title">
+                    <Bus size={16} />
+                    <span>2 ta avtobus</span>
+                  </div>
+                  <div className="stat-card-subtitle">Yo'nalishda</div>
+                </div>
+
+                <div className="sheet-stat-card">
+                  <div className="stat-card-title">
+                    <Clock size={16} />
+                    <span>4 daq</span>
+                  </div>
+                  <div className="stat-card-subtitle">Yaqin avtobus</div>
+                </div>
               </div>
-              <div className="stat-card-subtitle">Yaqin avtobus</div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       )}
     </div>

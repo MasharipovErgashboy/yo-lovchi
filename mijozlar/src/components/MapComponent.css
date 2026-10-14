@@ -250,11 +250,17 @@
   border-top-left-radius: 28px;
   border-top-right-radius: 28px;
   box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.12);
-  padding: 12px 20px 24px 20px;
+  padding: 10px 20px 24px 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   animation: sheetSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.map-bottom-sheet.is-collapsed {
+  gap: 0;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
 @keyframes sheetSlideUp {
@@ -262,12 +268,51 @@
   to { transform: translateY(0); }
 }
 
+.sheet-drag-handle-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 2px 0 8px 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .sheet-drag-handle {
   width: 44px;
   height: 5px;
-  background-color: #e2e8f0;
+  background-color: #cbd5e1;
   border-radius: 3px;
-  margin: 0 auto 4px auto;
+  transition: background-color 0.2s;
+}
+
+.sheet-drag-handle-wrapper:hover .sheet-drag-handle {
+  background-color: #94a3b8;
+}
+
+.sheet-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sheet-toggle-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.sheet-toggle-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 /* Route Header */
