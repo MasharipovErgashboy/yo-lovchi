@@ -12,6 +12,8 @@ import {
   Navigation, 
   Layers, 
   Compass, 
+  Plus,
+  Minus,
   X,
   Loader2
 } from 'lucide-react';
@@ -102,7 +104,12 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       center: [40.7821, 72.3442],
       zoom: 13,
       zoomControl: false,
-      attributionControl: false
+      attributionControl: false,
+      tap: false,
+      touchZoom: true,
+      bounceAtZoomLimits: false,
+      maxZoom: 20,
+      minZoom: 6
     });
 
     const initialLayer = MAP_LAYERS[activeLayer] || MAP_LAYERS.google;
@@ -445,6 +452,19 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
     }
   };
 
+  // Zoom controls
+  const handleZoomIn = () => {
+    if (mapInstance.current) {
+      mapInstance.current.zoomIn();
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (mapInstance.current) {
+      mapInstance.current.zoomOut();
+    }
+  };
+
   // Timeline stops
   const currentStops = (selectedRoute && Array.isArray(selectedRoute.stops) && selectedRoute.stops.length > 0)
     ? selectedRoute.stops.map((s, idx) => (typeof s === 'object' ? s.name || `Bekat ${idx + 1}` : String(s)))
@@ -462,11 +482,21 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         </div>
       )}
 
-      {/* 2. Floating Action Controls (Right side - exactly like Image 3) */}
+      {/* 2. Floating Action Controls (Right side - positioned comfortably lower) */}
       <div className="floating-map-controls">
         <button className="map-ctrl-btn" onClick={handleLocateMe} title="Mening joylashuvim">
-          <Navigation size={18} color="#0f172a" />
+          <Navigation size={18} color="#0066FF" />
         </button>
+
+        <div className="zoom-btn-group">
+          <button className="map-ctrl-btn zoom-btn" onClick={handleZoomIn} title="Kattalashtirish (+)">
+            <Plus size={18} color="#0f172a" />
+          </button>
+          <button className="map-ctrl-btn zoom-btn" onClick={handleZoomOut} title="Kichiklashtirish (-)">
+            <Minus size={18} color="#0f172a" />
+          </button>
+        </div>
+
         <button 
           className="map-ctrl-btn" 
           onClick={handleToggleLayer} 
@@ -474,6 +504,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         >
           <Layers size={18} color="#0f172a" />
         </button>
+
         <button 
           className="map-ctrl-btn" 
           onClick={handleResetView} 

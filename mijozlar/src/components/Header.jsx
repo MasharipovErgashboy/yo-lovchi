@@ -17,7 +17,7 @@ export default function Header({ activeTab, setActiveTab }) {
         onClick={() => setActiveTab('xarita')}
       >
         <Map size={18} />
-        Xaritada ko'rish
+        Xarita
       </button>
       <button 
         className={`tab-btn ${activeTab === 'support' ? 'active' : ''}`}

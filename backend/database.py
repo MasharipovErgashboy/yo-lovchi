@@ -684,10 +684,13 @@ def update_route(
     new_price = price if price is not None else existing["price"]
     new_is_active = is_active if is_active is not None else existing["is_active"]
 
-    if stops is not None or polyline is not None:
-        target_stops = stops if stops is not None else existing.get("stops", [])
-        target_poly = polyline if polyline is not None else existing.get("polyline", [])
+    if stops is not None:
+        target_stops = stops
+        target_poly = polyline  # Re-route through all stops if polyline not explicitly passed
         processed_stops, processed_poly = process_stops_and_polyline(target_stops, target_poly)
+    elif polyline is not None:
+        target_stops = existing.get("stops", [])
+        processed_stops, processed_poly = process_stops_and_polyline(target_stops, polyline)
     else:
         processed_stops = existing.get("stops", [])
         processed_poly = existing.get("polyline", [])

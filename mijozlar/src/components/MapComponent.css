@@ -19,6 +19,7 @@
   top: 0;
   left: 0;
   z-index: 1;
+  touch-action: none;
 }
 
 /* Custom Stop Marker */
@@ -136,15 +137,15 @@
   margin-top: 2px;
 }
 
-/* Floating Action Controls on Right Side (Matching Image 3) */
+/* Floating Action Controls on Right Side (Positioned comfortably lower above sheet) */
 .floating-map-controls {
   position: absolute;
-  top: 86px;
+  bottom: 250px;
   right: 16px;
   z-index: 1000;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .map-ctrl-btn {
@@ -159,11 +160,39 @@
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .map-ctrl-btn:hover {
-  transform: scale(1.08);
+  transform: scale(1.06);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.map-ctrl-btn:active {
+  transform: scale(0.94);
+}
+
+/* Zoom button group */
+.zoom-btn-group {
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  border-radius: 22px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.zoom-btn-group .map-ctrl-btn.zoom-btn {
+  border-radius: 0;
+  box-shadow: none;
+  width: 44px;
+  height: 38px;
+}
+
+.zoom-btn-group .map-ctrl-btn.zoom-btn:first-child {
+  border-bottom: 1px solid #f1f5f9;
 }
 
 /* Floating Legend Box (Bottom Left above sheet - Matching Image 3) */
