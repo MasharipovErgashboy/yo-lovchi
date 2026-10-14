@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet-rotate';
 import { Navigation, Plus, Minus, Compass, X, Flag, Clock, MapPin, Maximize, Minimize } from 'lucide-react';
 
 export default function DriverMap({ 
@@ -22,6 +23,7 @@ export default function DriverMap({
   const [navInfo, setNavInfo] = useState(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [currentBearing, setCurrentBearing] = useState(0);
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -33,7 +35,19 @@ export default function DriverMap({
       center: defaultCenter,
       zoom: 14,
       zoomControl: false,
-      attributionControl: false
+      attributionControl: false,
+      rotate: true,
+      touchRotate: true,
+      rotateControl: false,
+      bearing: 0
+    });
+
+    // Listen to rotation events to update compass
+    map.on('rotate', () => {
+      try {
+        const b = map.getBearing ? map.getBearing() : 0;
+        setCurrentBearing(Math.round(b));
+      } catch (e) {}
     });
 
     // Clean Google Maps raster tiles
@@ -403,11 +417,17 @@ export default function DriverMap({
   const handleResetRouteView = () => {
     userMovedMapRef.current = false;
     setIsFollowing(false);
-    if (mapInstance.current && assignedRoute) {
-      const stops = (assignedRoute.stops || []).filter(s => s && s.lat && s.lng);
-      if (stops.length > 0) {
-        const bounds = L.latLngBounds(stops.map(s => [Number(s.lat), Number(s.lng)]));
-        mapInstance.current.fitBounds(bounds, { padding: [40, 40] });
+    if (mapInstance.current) {
+      if (typeof mapInstance.current.setBearing === 'function') {
+        mapInstance.current.setBearing(0);
+        setCurrentBearing(0);
+      }
+      if (assignedRoute) {
+        const stops = (assignedRoute.stops || []).filter(s => s && s.lat && s.lng);
+        if (stops.length > 0) {
+          const bounds = L.latLngBounds(stops.map(s => [Number(s.lat), Number(s.lng)]));
+          mapInstance.current.fitBounds(bounds, { padding: [40, 40] });
+        }
       }
     }
   };
@@ -486,8 +506,19 @@ export default function DriverMap({
         <button className="driver-fab-btn" onClick={handleCenterOnMe} title="Mening joylashuvim">
           <Navigation size={18} color="#0066FF" />
         </button>
-        <button className="driver-fab-btn" onClick={handleResetRouteView} title="Marshrutni ko'rish">
-          <Compass size={18} color="#0f172a" />
+        <button 
+          className="driver-fab-btn" 
+          onClick={handleResetRouteView} 
+          title="Marshrutni ko'rish / Shimolga burish"
+        >
+          <Compass 
+            size={18} 
+            color={currentBearing !== 0 ? "#2563EB" : "#0f172a"} 
+            style={{ 
+              transform: `rotate(${-currentBearing}deg)`,
+              transition: 'transform 0.2s ease'
+            }} 
+          />
         </button>
         <div className="driver-fab-zoom-group">
           <button className="driver-fab-btn zoom" onClick={() => mapInstance.current?.zoomIn()} title="Kattalashtirish (+)">

@@ -999,14 +999,14 @@
   margin: 0 !important;
 }
 
-/* In fullscreen mode, position top banner and route pill below Telegram's "Yopish" button */
+/* In fullscreen mode, position top banner and route pill slightly below Telegram's "Yopish" button */
 .driver-fullmap-container.is-fullscreen .driver-route-top-pill {
-  top: max(108px, calc(var(--app-top-inset, 64px) + 40px)) !important;
+  top: max(82px, calc(var(--app-top-inset, 64px) + 12px)) !important;
   left: 14px !important;
 }
 
 .driver-fullmap-container.is-fullscreen .driver-nav-banner {
-  top: max(108px, calc(var(--app-top-inset, 64px) + 40px)) !important;
+  top: max(82px, calc(var(--app-top-inset, 64px) + 12px)) !important;
   left: 14px !important;
   right: 14px !important;
 }
