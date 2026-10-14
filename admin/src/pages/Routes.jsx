@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, RefreshCw, Navigation, Banknote } from 'lucide-react';
+import { Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, RefreshCw, Navigation } from 'lucide-react';
 import './PagesCommon.css';
 import './Routes.css';
 
@@ -26,7 +26,6 @@ export default function RoutesPage() {
   const [newRouteNum, setNewRouteNum] = useState('');
   const [newRouteName, setNewRouteName] = useState('');
   const [newRouteDirection, setNewRouteDirection] = useState('');
-  const [newRoutePrice, setNewRoutePrice] = useState('3 000 so\'m');
   const [newRouteColor, setNewRouteColor] = useState('#3b82f6');
   const [newStops, setNewStops] = useState([
     { name: '', raw: '' },
@@ -56,7 +55,6 @@ export default function RoutesPage() {
     setNewRouteNum('');
     setNewRouteName('');
     setNewRouteDirection('');
-    setNewRoutePrice('3 000 so\'m');
     setNewRouteColor('#3b82f6');
     setNewStops([
       { name: '1-bekat (Bosh bekat)', raw: '' },
@@ -70,7 +68,6 @@ export default function RoutesPage() {
     setNewRouteNum(route.number || '');
     setNewRouteName(route.name || '');
     setNewRouteDirection(route.direction || '');
-    setNewRoutePrice(route.price || '3 000 so\'m');
     setNewRouteColor(route.color || '#3b82f6');
     
     // Normalize stops
@@ -144,7 +141,6 @@ export default function RoutesPage() {
         number: String(newRouteNum).trim(),
         name: String(newRouteName || `${newRouteNum}-marshrut`).trim(),
         direction: String(newRouteDirection).trim(),
-        price: String(newRoutePrice).trim(),
         color: newRouteColor,
         stops: newStops.map((s, idx) => ({
           name: s.name && s.name.trim() !== '' ? s.name.trim() : `Bekat ${idx + 1}`,
@@ -228,11 +224,6 @@ export default function RoutesPage() {
                         {route.direction}
                       </div>
                     )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
-                      <span style={{ fontSize: '12px', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '6px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Banknote size={12} /> {route.price || "3 000 so'm"}
-                      </span>
-                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button 
@@ -331,27 +322,15 @@ export default function RoutesPage() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '14px' }}>
-                  <div style={{ flex: 2 }}>
-                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '13px' }}>Yo'nalish tavsifi</label>
-                    <input 
-                      type="text" 
-                      className="custom-input" 
-                      placeholder="Andijon (Eski shahar) → Asaka" 
-                      value={newRouteDirection}
-                      onChange={(e) => setNewRouteDirection(e.target.value)}
-                    />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '13px' }}>Yo'lkira narxi</label>
-                    <input 
-                      type="text" 
-                      className="custom-input" 
-                      placeholder="3 000 so'm" 
-                      value={newRoutePrice}
-                      onChange={(e) => setNewRoutePrice(e.target.value)}
-                    />
-                  </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '13px' }}>Yo'nalish tavsifi</label>
+                  <input 
+                    type="text" 
+                    className="custom-input" 
+                    placeholder="Andijon (Eski shahar) → Asaka" 
+                    value={newRouteDirection}
+                    onChange={(e) => setNewRouteDirection(e.target.value)}
+                  />
                 </div>
 
                 {/* Color picker */}

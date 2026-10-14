@@ -599,9 +599,8 @@ export default function Drivers() {
                           <strong style={{ color: found.color && found.color.startsWith('#') ? found.color : 'var(--primary)' }}>
                             {found.number}-marshrut: {found.name}
                           </strong>
-                          <div style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>{found.direction}</div>
-                          <div style={{ color: '#10b981', fontSize: '12px', marginTop: '4px' }}>
-                            Yo'lkira: {found.price} | Bekatlar: {found.stops ? found.stops.length : 0} ta
+                          <div style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '4px' }}>
+                            Bekatlar soni: {found.stops ? found.stops.length : 0} ta
                           </div>
                         </div>
                       );

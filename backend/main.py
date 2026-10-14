@@ -89,7 +89,7 @@ class RouteCreate(BaseModel):
     name: str
     direction: Optional[str] = ""
     color: Optional[str] = "var(--route-blue)"
-    price: Optional[str] = "3 000 so'm"
+    price: Optional[str] = ""
     stops: Optional[List[Any]] = []
     polyline: Optional[List[List[float]]] = []
     is_active: Optional[bool] = True
@@ -359,7 +359,7 @@ def create_new_route(payload: RouteCreate):
             name=payload.name,
             direction=payload.direction or "",
             color=payload.color or "var(--route-blue)",
-            price=payload.price or "3 000 so'm",
+            price=payload.price or "",
             stops=payload.stops or [],
             polyline=payload.polyline or [],
             is_active=payload.is_active if payload.is_active is not None else True
