@@ -559,7 +559,9 @@ def create_route(
     color: str = "var(--route-blue)",
     price: str = "3 000 so'm",
     stops: Optional[List[Any]] = None,
-    polyline: Optional[List[Any]] = None
+    polyline: Optional[List[Any]] = None,
+    is_active: bool = True,
+    **kwargs
 ) -> Dict[str, Any]:
     """Create a new route with parsed stops and polyline."""
     processed_stops, processed_polyline = process_stops_and_polyline(stops or [], polyline)
@@ -569,7 +571,7 @@ def create_route(
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO routes (number, name, direction, color, price, stops, polyline, is_active, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         RETURNING *;
     """, (
         str(number),
@@ -578,7 +580,8 @@ def create_route(
         str(color),
         str(price),
         json.dumps(processed_stops),
-        json.dumps(processed_polyline)
+        json.dumps(processed_polyline),
+        bool(is_active)
     ))
     row = cursor.fetchone()
     conn.commit()
@@ -595,7 +598,8 @@ def update_route(
     price: Optional[str] = None,
     stops: Optional[List[Any]] = None,
     polyline: Optional[List[Any]] = None,
-    is_active: Optional[bool] = None
+    is_active: Optional[bool] = None,
+    **kwargs
 ) -> Optional[Dict[str, Any]]:
     """Update existing route."""
     existing = get_route_by_id(route_id)
