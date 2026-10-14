@@ -17,11 +17,11 @@
             var tg = window.Telegram.WebApp;
             tg.ready();
             tg.expand();
-            if (typeof tg.requestFullscreen === 'function') {
-              tg.requestFullscreen();
+            if (tg.isVersionAtLeast && tg.isVersionAtLeast('8.0') && typeof tg.requestFullscreen === 'function') {
+              try { tg.requestFullscreen(); } catch (e) {}
             }
             if (typeof tg.disableVerticalSwipes === 'function') {
-              tg.disableVerticalSwipes();
+              try { tg.disableVerticalSwipes(); } catch (e) {}
             }
             if (typeof tg.setHeaderColor === 'function') {
               tg.setHeaderColor('#F0F4F8');

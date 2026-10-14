@@ -22,17 +22,17 @@ function App() {
       try {
         tg.ready();
         tg.expand();
-        if (typeof tg.requestFullscreen === 'function') {
-          tg.requestFullscreen();
+        if (tg.isVersionAtLeast && tg.isVersionAtLeast('8.0') && typeof tg.requestFullscreen === 'function') {
+          try { tg.requestFullscreen(); } catch (e) {}
         }
         if (typeof tg.disableVerticalSwipes === 'function') {
-          tg.disableVerticalSwipes();
+          try { tg.disableVerticalSwipes(); } catch (e) {}
         }
         if (typeof tg.setHeaderColor === 'function') {
-          tg.setHeaderColor('#F0F4F8');
+          try { tg.setHeaderColor('#F0F4F8'); } catch (e) {}
         }
         if (typeof tg.setBackgroundColor === 'function') {
-          tg.setBackgroundColor('#F0F4F8');
+          try { tg.setBackgroundColor('#F0F4F8'); } catch (e) {}
         }
       } catch (e) {
         console.error("Telegram WebApp init error:", e);
@@ -56,7 +56,7 @@ function App() {
 
       const enterFs = () => {
         try {
-          if (typeof tg.requestFullscreen === 'function' && !tg.isFullscreen) {
+          if (tg.isVersionAtLeast && tg.isVersionAtLeast('8.0') && typeof tg.requestFullscreen === 'function' && !tg.isFullscreen) {
             tg.requestFullscreen();
             updateInsets();
           }
