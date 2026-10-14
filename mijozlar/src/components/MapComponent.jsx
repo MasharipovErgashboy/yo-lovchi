@@ -58,8 +58,47 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
   const [activeLayer, setActiveLayer] = useState('google');
   const [toastMessage, setToastMessage] = useState(null);
   const [isSheetCollapsed, setIsSheetCollapsed] = useState(false);
+  const [collapsedHeight, setCollapsedHeight] = useState(96);
+  const [expandedHeight, setExpandedHeight] = useState(280);
+  const sheetRef = useRef(null);
   const lastFittedRouteId = useRef(null);
   const userHasMovedMap = useRef(false);
+
+  // Measure bottom sheet dynamically to anchor controls smoothly above it
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      if (sheetRef.current) {
+        const h = sheetRef.current.offsetHeight;
+        if (h > 0) {
+          if (isSheetCollapsed) {
+            setCollapsedHeight(h);
+          } else {
+            setExpandedHeight(h);
+          }
+        }
+      }
+    };
+
+    measure();
+
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => {
+        measure();
+      });
+      ro.observe(el);
+    }
+
+    const t = setTimeout(measure, 100);
+
+    return () => {
+      if (ro) ro.disconnect();
+      clearTimeout(t);
+    };
+  }, [selectedRoute, isSheetCollapsed]);
 
   // Fetch routes and live drivers from backend
   const fetchData = async () => {
@@ -261,13 +300,9 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       routeDrivers.forEach((driver, dIdx) => {
         const isApproaching = dIdx % 2 === 0; // alternate for demo/live
         const busColor = isApproaching ? '#0066FF' : '#10B981';
-        const badgeText = isApproaching ? 'Kelyapti' : 'Ketyapti';
 
         const busIconHtml = `
           <div class="custom-bus-marker ${isApproaching ? 'approaching' : 'leaving'}">
-            <div class="bus-badge-label" style="background: ${busColor}">
-              ${badgeText}
-            </div>
             <div class="bus-circle-icon" style="background: ${busColor}">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M8 6v6"></path>
@@ -285,8 +320,8 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
           icon: L.divIcon({
             className: 'bus-marker-wrapper',
             html: busIconHtml,
-            iconSize: [44, 44],
-            iconAnchor: [22, 22]
+            iconSize: [36, 36],
+            iconAnchor: [18, 18]
           }),
           zIndexOffset: 1000
         });
@@ -314,7 +349,6 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       // Bus 1: Approaching (Blue)
       const bus1Html = `
         <div class="custom-bus-marker approaching">
-          <div class="bus-badge-label" style="background: #0066FF">Kelyapti</div>
           <div class="bus-circle-icon" style="background: #0066FF">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M8 6v6"></path><path d="M15 6v6"></path><path d="M2 12h19.6"></path>
@@ -325,14 +359,13 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         </div>
       `;
       L.marker(point1, {
-        icon: L.divIcon({ className: 'bus-marker-wrapper', html: bus1Html, iconSize: [44, 44], iconAnchor: [22, 22] }),
+        icon: L.divIcon({ className: 'bus-marker-wrapper', html: bus1Html, iconSize: [36, 36], iconAnchor: [18, 18] }),
         zIndexOffset: 1000
       }).addTo(layerGroup);
 
       // Bus 2: Leaving (Green)
       const bus2Html = `
         <div class="custom-bus-marker leaving">
-          <div class="bus-badge-label" style="background: #10B981">Ketyapti</div>
           <div class="bus-circle-icon" style="background: #10B981">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M8 6v6"></path><path d="M15 6v6"></path><path d="M2 12h19.6"></path>
@@ -343,14 +376,13 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         </div>
       `;
       L.marker(point2, {
-        icon: L.divIcon({ className: 'bus-marker-wrapper', html: bus2Html, iconSize: [44, 44], iconAnchor: [22, 22] }),
+        icon: L.divIcon({ className: 'bus-marker-wrapper', html: bus2Html, iconSize: [36, 36], iconAnchor: [18, 18] }),
         zIndexOffset: 900
       }).addTo(layerGroup);
 
       // Bus 3: Near start (Green)
       const bus3Html = `
         <div class="custom-bus-marker leaving">
-          <div class="bus-badge-label" style="background: #10B981">Ketyapti</div>
           <div class="bus-circle-icon" style="background: #10B981">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M8 6v6"></path><path d="M15 6v6"></path><path d="M2 12h19.6"></path>
@@ -361,7 +393,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         </div>
       `;
       L.marker(point0, {
-        icon: L.divIcon({ className: 'bus-marker-wrapper', html: bus3Html, iconSize: [44, 44], iconAnchor: [22, 22] }),
+        icon: L.divIcon({ className: 'bus-marker-wrapper', html: bus3Html, iconSize: [36, 36], iconAnchor: [18, 18] }),
         zIndexOffset: 800
       }).addTo(layerGroup);
     }
@@ -471,6 +503,10 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
     ? selectedRoute.stops.map((s, idx) => (typeof s === 'object' ? s.name || `Bekat ${idx + 1}` : String(s)))
     : ["Do'stlik bekati", "Qiyot bekati", "5-bekat (hozir)", "6-bekat", "7-bekat", "8-bekat"];
 
+  // Calculate bottom offset so floating controls are anchored with a clean 20px gap directly above the route card
+  const currentSheetH = selectedRoute ? (isSheetCollapsed ? (collapsedHeight || 96) : (expandedHeight || 280)) : 0;
+  const floatingBottom = currentSheetH > 0 ? (currentSheetH + 20) : 24;
+
   return (
     <div className="fullscreen-map-wrapper">
       {/* 1. Leaflet Map Container */}
@@ -483,10 +519,10 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         </div>
       )}
 
-      {/* 2. Floating Action Controls (Right side - positioned comfortably lower) */}
+      {/* 2. Floating Action Controls (Right side - anchored above the bottom sheet) */}
       <div 
         className="floating-map-controls"
-        style={{ bottom: isSheetCollapsed ? '100px' : '260px' }}
+        style={{ bottom: `${floatingBottom}px` }}
       >
         <button className="map-ctrl-btn" onClick={handleLocateMe} title="Mening joylashuvim">
           <Navigation size={18} color="#0066FF" />
@@ -521,7 +557,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       {/* 3. Floating Legend Box (Bottom Left above sheet) */}
       <div 
         className="floating-legend-box"
-        style={{ bottom: isSheetCollapsed ? '100px' : '260px' }}
+        style={{ bottom: `${floatingBottom}px` }}
       >
         <div className="legend-row">
           <div className="legend-icon blue">
@@ -541,7 +577,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
 
       {/* 4. Bottom Sheet Card (Collapsible) */}
       {selectedRoute && (
-        <div className={`map-bottom-sheet ${isSheetCollapsed ? 'is-collapsed' : ''}`}>
+        <div ref={sheetRef} className={`map-bottom-sheet ${isSheetCollapsed ? 'is-collapsed' : ''}`}>
           <div 
             className="sheet-drag-handle-wrapper"
             onClick={() => setIsSheetCollapsed(prev => !prev)}
@@ -597,93 +633,91 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
             </div>
           </div>
 
-          {/* Stops Timeline Slider & Stats (Only shown when expanded) */}
-          {!isSheetCollapsed && (
-            <>
-              {/* Stops Timeline Slider */}
-              <div className="sheet-stops-timeline">
-                <button 
-                  className="timeline-nav-btn"
-                  onClick={() => setCurrentStopIndex(prev => Math.max(0, prev - 1))}
-                  disabled={currentStopIndex === 0}
-                >
-                  <ChevronLeft size={16} />
-                </button>
+          {/* Stops Timeline Slider & Stats (Smooth collapsible body) */}
+          <div className={`sheet-collapsible-body ${isSheetCollapsed ? 'collapsed' : 'expanded'}`}>
+            {/* Stops Timeline Slider */}
+            <div className="sheet-stops-timeline">
+              <button 
+                className="timeline-nav-btn"
+                onClick={() => setCurrentStopIndex(prev => Math.max(0, prev - 1))}
+                disabled={currentStopIndex === 0}
+              >
+                <ChevronLeft size={16} />
+              </button>
 
-                <div className="timeline-track-container">
-                  <div className="timeline-track-line">
-                    <div 
-                      className="timeline-track-fill" 
-                      style={{ width: `${(currentStopIndex / (currentStops.length - 1)) * 100}%` }}
-                    />
-                  </div>
+              <div className="timeline-track-container">
+                <div className="timeline-track-line">
+                  <div 
+                    className="timeline-track-fill" 
+                    style={{ width: `${(currentStopIndex / (currentStops.length - 1)) * 100}%` }}
+                  />
+                </div>
 
-                  <div className="timeline-stops-points">
-                    {currentStops.map((stopName, idx) => {
-                      const isPast = idx < currentStopIndex;
-                      const isCurrent = idx === currentStopIndex;
+                <div className="timeline-stops-points">
+                  {currentStops.map((stopName, idx) => {
+                    const isPast = idx < currentStopIndex;
+                    const isCurrent = idx === currentStopIndex;
 
-                      return (
-                        <div 
-                          key={idx} 
-                          className={`timeline-stop-item ${isCurrent ? 'active' : ''}`}
-                          onClick={() => setCurrentStopIndex(idx)}
-                        >
-                          <div className="stop-point-circle">
-                            {isCurrent ? (
-                              <div className="current-bus-badge">
-                                <Bus size={12} color="#ffffff" />
-                              </div>
-                            ) : (
-                              <div className={`point-dot ${isPast ? 'past' : ''}`}></div>
-                            )}
-                          </div>
-                          <span className="stop-name-label">
-                            {stopName}
-                          </span>
+                    return (
+                      <div 
+                        key={idx} 
+                        className={`timeline-stop-item ${isCurrent ? 'active' : ''}`}
+                        onClick={() => setCurrentStopIndex(idx)}
+                      >
+                        <div className="stop-point-circle">
+                          {isCurrent ? (
+                            <div className="current-bus-badge">
+                              <Bus size={12} color="#ffffff" />
+                            </div>
+                          ) : (
+                            <div className={`point-dot ${isPast ? 'past' : ''}`}></div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <button 
-                  className="timeline-nav-btn"
-                  onClick={() => setCurrentStopIndex(prev => Math.min(currentStops.length - 1, prev + 1))}
-                  disabled={currentStopIndex === currentStops.length - 1}
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-
-              {/* Bottom Stats 3-Column Grid */}
-              <div className="sheet-stats-grid">
-                <div className="sheet-stat-card">
-                  <div className="stat-card-title green">
-                    <Users size={16} />
-                    <span>Bo'sh joy ko'p</span>
-                  </div>
-                  <div className="stat-card-subtitle">60–70%</div>
-                </div>
-
-                <div className="sheet-stat-card">
-                  <div className="stat-card-title">
-                    <Bus size={16} />
-                    <span>2 ta avtobus</span>
-                  </div>
-                  <div className="stat-card-subtitle">Yo'nalishda</div>
-                </div>
-
-                <div className="sheet-stat-card">
-                  <div className="stat-card-title">
-                    <Clock size={16} />
-                    <span>4 daq</span>
-                  </div>
-                  <div className="stat-card-subtitle">Yaqin avtobus</div>
+                        <span className="stop-name-label">
+                          {stopName}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            </>
-          )}
+
+              <button 
+                className="timeline-nav-btn"
+                onClick={() => setCurrentStopIndex(prev => Math.min(currentStops.length - 1, prev + 1))}
+                disabled={currentStopIndex === currentStops.length - 1}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+
+            {/* Bottom Stats 3-Column Grid */}
+            <div className="sheet-stats-grid">
+              <div className="sheet-stat-card">
+                <div className="stat-card-title green">
+                  <Users size={16} />
+                  <span>Bo'sh joy ko'p</span>
+                </div>
+                <div className="stat-card-subtitle">60–70%</div>
+              </div>
+
+              <div className="sheet-stat-card">
+                <div className="stat-card-title">
+                  <Bus size={16} />
+                  <span>2 ta avtobus</span>
+                </div>
+                <div className="stat-card-subtitle">Yo'nalishda</div>
+              </div>
+
+              <div className="sheet-stat-card">
+                <div className="stat-card-title">
+                  <Clock size={16} />
+                  <span>4 daq</span>
+                </div>
+                <div className="stat-card-subtitle">Yaqin avtobus</div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
