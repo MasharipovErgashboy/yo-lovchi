@@ -96,7 +96,13 @@ function App() {
         } else if (res.ok) {
           const data = await res.json();
           if (data && data.assigned_route) {
-            setAssignedRoute(data.assigned_route);
+            setAssignedRoute(prev => {
+              if (!prev) return data.assigned_route;
+              if (prev.id !== data.assigned_route.id || prev.updated_at !== data.assigned_route.updated_at) {
+                return data.assigned_route;
+              }
+              return prev;
+            });
           }
         }
       } catch (e) {
@@ -105,7 +111,7 @@ function App() {
     };
 
     checkStatus();
-    const interval = setInterval(checkStatus, 4000);
+    const interval = setInterval(checkStatus, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -126,13 +132,13 @@ function App() {
         if (res.ok) {
           const list = await res.json();
           const unread = (list || []).filter(m => !m.is_read).length;
-          setUnreadCount(unread);
+          setUnreadCount(prev => (prev !== unread ? unread : prev));
         }
       } catch (e) {}
     };
 
     checkUnread();
-    const interval = setInterval(checkUnread, 4000);
+    const interval = setInterval(checkUnread, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -176,15 +182,13 @@ function App() {
     }
   };
 
-  // Real-time GPS location transmitter when locationEnabled is true
+  // Real-time GPS location transmitter
   useEffect(() => {
-    if (!locationEnabled) return;
+    if (!locationEnabled && subTab !== 'xarita' && !navToStartActive) return;
 
     const params = new URLSearchParams(window.location.search);
     const phone = params.get('phone');
     const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-
-    if (!phone && !tgUserId) return;
 
     const sendPosition = (position) => {
       const lat = position.coords.latitude;
@@ -192,25 +196,33 @@ function App() {
       const heading = position.coords.heading || 0.0;
       const speed = position.coords.speed ? Math.round(position.coords.speed * 3.6) : 0.0;
 
-      // Update local state for driver map
-      setDriverLocation({ latitude: lat, longitude: lng, heading, speed });
+      // Update local state for driver map (only if actually moved to prevent render loop)
+      setDriverLocation(prev => {
+        if (prev && Math.abs(prev.latitude - lat) < 0.00001 && Math.abs(prev.longitude - lng) < 0.00001 && prev.heading === heading) {
+          return prev;
+        }
+        return { latitude: lat, longitude: lng, heading, speed };
+      });
 
-      const payload = {
-        telegram_id: tgUserId || null,
-        phone: phone || null,
-        route_id: assignedRoute?.id || null,
-        latitude: lat,
-        longitude: lng,
-        heading: heading,
-        speed: speed,
-        capacity: capacity
-      };
+      // Transmit to backend API ONLY when driver has officially enabled location
+      if (locationEnabled && (phone || tgUserId)) {
+        const payload = {
+          telegram_id: tgUserId || null,
+          phone: phone || null,
+          route_id: assignedRoute?.id || null,
+          latitude: lat,
+          longitude: lng,
+          heading: heading,
+          speed: speed,
+          capacity: capacity
+        };
 
-      fetch('/api/driver/location', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).catch(err => console.error("GPS send error:", err));
+        fetch('/api/driver/location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).catch(err => console.error("GPS send error:", err));
+      }
     };
 
     let watchId = null;
@@ -223,7 +235,6 @@ function App() {
       );
     }
 
-    // Periodic ping every 4 seconds
     const interval = setInterval(() => {
       if ("geolocation" in navigator) {
         navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true });
@@ -236,7 +247,7 @@ function App() {
       }
       clearInterval(interval);
     };
-  }, [locationEnabled, capacity, assignedRoute]);
+  }, [locationEnabled, capacity, assignedRoute, subTab, navToStartActive]);
 
   if (isKickedOut) {
     return (

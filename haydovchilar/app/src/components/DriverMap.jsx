@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Navigation, Plus, Minus, Compass, X, Flag, Clock, MapPin } from 'lucide-react';
+import { Navigation, Plus, Minus, Compass, X, Flag, Clock, MapPin, Maximize, Minimize } from 'lucide-react';
 
 export default function DriverMap({ 
   assignedRoute, 
@@ -15,8 +15,13 @@ export default function DriverMap({
   const routeLayerGroupRef = useRef(null);
   const navLayerGroupRef = useRef(null);
 
+  const drawnRouteIdRef = useRef(null);
+  const navDrawnKeyRef = useRef(null);
+  const userMovedMapRef = useRef(false);
+
   const [navInfo, setNavInfo] = useState(null);
-  const [loadingNav, setLoadingNav] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -41,6 +46,16 @@ export default function DriverMap({
     navLayerGroupRef.current = L.layerGroup().addTo(map);
     mapInstance.current = map;
 
+    // Detect user manual interaction (drag, pinch, zoom) to stop resetting their view
+    const handleUserInteraction = () => {
+      userMovedMapRef.current = true;
+      setIsFollowing(false);
+    };
+
+    map.on('dragstart', handleUserInteraction);
+    map.on('zoomstart', handleUserInteraction);
+    map.on('touchstart', handleUserInteraction);
+
     // Initial resize trigger
     setTimeout(() => {
       try { map.invalidateSize(); } catch (e) {}
@@ -52,7 +67,7 @@ export default function DriverMap({
     };
   }, []);
 
-  // ResizeObserver to ensure map renders smoothly on tab switch
+  // ResizeObserver to ensure map renders smoothly on tab switch and fullscreen
   useEffect(() => {
     if (!mapContainerRef.current) return;
     const ro = new ResizeObserver(() => {
@@ -64,14 +79,28 @@ export default function DriverMap({
     return () => ro.disconnect();
   }, []);
 
-  // Draw Assigned Route Polyline & Stops (passing all stops via OSRM)
+  // Draw Assigned Route Polyline & Stops (Runs ONCE per route ID without blinking)
   useEffect(() => {
     if (!mapInstance.current || !routeLayerGroupRef.current || !assignedRoute) return;
+
+    // If already drawn for this route, keep it steady in background
+    if (drawnRouteIdRef.current === assignedRoute.id) return;
+    drawnRouteIdRef.current = assignedRoute.id;
 
     const layerGroup = routeLayerGroupRef.current;
     layerGroup.clearLayers();
 
-    const stops = (assignedRoute.stops || []).filter(s => s && s.lat && s.lng);
+    const stops = (assignedRoute.stops || [])
+      .map((s, idx) => {
+        if (!s) return null;
+        const lat = s.lat != null ? Number(s.lat) : null;
+        const lng = s.lng != null ? Number(s.lng) : null;
+        return lat && lng && !isNaN(lat) && !isNaN(lng) 
+          ? { name: s.name || `Bekat ${idx + 1}`, lat, lng } 
+          : null;
+      })
+      .filter(Boolean);
+
     const routeColor = assignedRoute.color && assignedRoute.color.startsWith('#') 
       ? assignedRoute.color 
       : '#0066FF';
@@ -104,7 +133,8 @@ export default function DriverMap({
         lineJoin: 'round'
       }).addTo(layerGroup);
 
-      if (!navToStartActive) {
+      // Fit bounds only if nav is not active and user has not interacted
+      if (!navToStartActive && !userMovedMapRef.current) {
         try {
           const bounds = L.latLngBounds(pts);
           mapInstance.current.fitBounds(bounds, { padding: [40, 40] });
@@ -143,8 +173,9 @@ export default function DriverMap({
       .addTo(layerGroup);
     });
 
-    // Fetch road geometry via OSRM if multiple stops
-    if (stops.length >= 2) {
+    if (Array.isArray(assignedRoute.polyline) && assignedRoute.polyline.length >= 2) {
+      drawRouteOnMap(assignedRoute.polyline);
+    } else if (stops.length >= 2) {
       const stopsParam = stops.map(s => `${s.lng},${s.lat}`).join(';');
       const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${stopsParam}?overview=full&geometries=geojson`;
 
@@ -154,26 +185,142 @@ export default function DriverMap({
           if (data && data.routes && data.routes.length > 0) {
             const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
             drawRouteOnMap(coords);
-          } else if (Array.isArray(assignedRoute.polyline) && assignedRoute.polyline.length >= 2) {
-            drawRouteOnMap(assignedRoute.polyline);
           } else {
             drawRouteOnMap(stops.map(s => [Number(s.lat), Number(s.lng)]));
           }
         })
         .catch(() => {
-          if (Array.isArray(assignedRoute.polyline) && assignedRoute.polyline.length >= 2) {
-            drawRouteOnMap(assignedRoute.polyline);
-          } else {
-            drawRouteOnMap(stops.map(s => [Number(s.lat), Number(s.lng)]));
-          }
+          drawRouteOnMap(stops.map(s => [Number(s.lat), Number(s.lng)]));
         });
-    } else if (Array.isArray(assignedRoute.polyline) && assignedRoute.polyline.length >= 2) {
-      drawRouteOnMap(assignedRoute.polyline);
     }
-
   }, [assignedRoute, navToStartActive]);
 
-  // Update Driver's OWN live location marker (ONLY THIS DRIVER)
+  // Navigation Route from Driver's GPS to Bosh Bekat (Calculated ONCE without 5s refreshes)
+  useEffect(() => {
+    if (!mapInstance.current || !navLayerGroupRef.current) return;
+    const navLayer = navLayerGroupRef.current;
+
+    if (!navToStartActive || !assignedRoute) {
+      navLayer.clearLayers();
+      setNavInfo(null);
+      navDrawnKeyRef.current = null;
+      return;
+    }
+
+    if (!driverLocation || !driverLocation.latitude || !driverLocation.longitude) return;
+
+    const stops = (assignedRoute.stops || []).filter(s => s && s.lat && s.lng);
+    if (stops.length === 0) return;
+
+    const boshBekat = stops[0];
+    const driverLat = Number(driverLocation.latitude);
+    const driverLng = Number(driverLocation.longitude);
+    const startLat = Number(boshBekat.lat);
+    const startLng = Number(boshBekat.lng);
+
+    const navKey = `${assignedRoute.id}_${startLat.toFixed(4)}_${startLng.toFixed(4)}`;
+    if (navDrawnKeyRef.current === navKey) {
+      // Route already drawn! Keep it steady without re-fetching or blinking
+      return;
+    }
+    navDrawnKeyRef.current = navKey;
+
+    const navOsrmUrl = `https://router.project-osrm.org/route/v1/driving/${driverLng},${driverLat};${startLng},${startLat}?overview=full&geometries=geojson`;
+
+    const drawNavigationLine = (pts, distanceMeters, durationSec) => {
+      navLayer.clearLayers();
+
+      // Glow
+      L.polyline(pts, {
+        color: '#2563EB',
+        weight: 12,
+        opacity: 0.25,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(navLayer);
+
+      // White outline
+      L.polyline(pts, {
+        color: '#ffffff',
+        weight: 7,
+        opacity: 0.95,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(navLayer);
+
+      // Dashed navigation line
+      L.polyline(pts, {
+        color: '#2563EB',
+        weight: 5,
+        opacity: 0.95,
+        dashArray: '8, 8',
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(navLayer);
+
+      // Destination Bosh Bekat Flag Marker
+      const destHtml = `
+        <div class="nav-dest-flag-wrap">
+          <div class="nav-dest-flag">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#ffffff" stroke="none">
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+              <line x1="4" y1="22" x2="4" y2="15" stroke="#ffffff" stroke-width="3"></line>
+            </svg>
+          </div>
+          <span class="nav-dest-label">Bosh bekat</span>
+        </div>
+      `;
+
+      L.marker([startLat, startLng], {
+        icon: L.divIcon({
+          className: 'nav-dest-marker',
+          html: destHtml,
+          iconSize: [36, 36],
+          iconAnchor: [18, 30]
+        }),
+        zIndexOffset: 4000
+      }).addTo(navLayer);
+
+      // Initial fit bounds only if user hasn't moved the map
+      if (!userMovedMapRef.current) {
+        try {
+          const bounds = L.latLngBounds([
+            [driverLat, driverLng],
+            [startLat, startLng],
+            ...pts
+          ]);
+          mapInstance.current.fitBounds(bounds, { padding: [60, 60] });
+        } catch (e) {}
+      }
+
+      setNavInfo({
+        distanceKm: (distanceMeters / 1000).toFixed(1),
+        durationMin: Math.max(1, Math.round(durationSec / 60)),
+        boshBekatName: boshBekat.name || "Bosh bekat"
+      });
+    };
+
+    fetch(navOsrmUrl)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+          drawNavigationLine(coords, route.distance, route.duration);
+        } else {
+          // Fallback straight line
+          const pts = [[driverLat, driverLng], [startLat, startLng]];
+          drawNavigationLine(pts, 10000, 900);
+        }
+      })
+      .catch(() => {
+        const pts = [[driverLat, driverLng], [startLat, startLng]];
+        drawNavigationLine(pts, 10000, 900);
+      });
+
+  }, [navToStartActive, assignedRoute]);
+
+  // Update Driver's OWN live location marker & smooth follow
   useEffect(() => {
     if (!mapInstance.current) return;
     const map = mapInstance.current;
@@ -209,10 +356,6 @@ export default function DriverMap({
         }),
         zIndexOffset: 3000
       }).addTo(map);
-
-      if (!navToStartActive) {
-        map.setView([latitude, longitude], 15);
-      }
     } else {
       driverMarkerRef.current.setLatLng([latitude, longitude]);
       const iconEl = driverMarkerRef.current.getElement();
@@ -221,120 +364,45 @@ export default function DriverMap({
       }
     }
 
-  }, [driverLocation, navToStartActive]);
-
-  // Navigation Route from Driver's GPS to Bosh Bekat (Triggered by "Ketdik")
-  useEffect(() => {
-    if (!mapInstance.current || !navLayerGroupRef.current) return;
-    const navLayer = navLayerGroupRef.current;
-    navLayer.clearLayers();
-
-    if (!navToStartActive || !driverLocation || !assignedRoute) {
-      setNavInfo(null);
-      return;
+    // Follow Mode: Keep vehicle centered smoothly while moving
+    if (isFollowing) {
+      map.panTo([latitude, longitude], { animate: true, duration: 0.8 });
     }
 
-    const stops = (assignedRoute.stops || []).filter(s => s && s.lat && s.lng);
-    if (stops.length === 0) return;
+  }, [driverLocation, isFollowing]);
 
-    const boshBekat = stops[0];
-    const driverLat = driverLocation.latitude;
-    const driverLng = driverLocation.longitude;
-    const startLat = Number(boshBekat.lat);
-    const startLng = Number(boshBekat.lng);
+  // "Ketdik" Button: centers and locks zoom on vehicle during travel
+  const handleToggleFollow = () => {
+    setIsFollowing(true);
+    userMovedMapRef.current = false;
 
-    setLoadingNav(true);
-
-    const navOsrmUrl = `https://router.project-osrm.org/route/v1/driving/${driverLng},${driverLat};${startLng},${startLat}?overview=full&geometries=geojson`;
-
-    const drawNavigationLine = (pts, distanceMeters, durationSec) => {
-      // Glow
-      L.polyline(pts, {
-        color: '#4F46E5',
-        weight: 12,
-        opacity: 0.25,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(navLayer);
-
-      // Dashed navigation line
-      L.polyline(pts, {
-        color: '#4F46E5',
-        weight: 6,
-        opacity: 0.95,
-        dashArray: '8, 8',
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(navLayer);
-
-      // Destination Bosh Bekat Flag Marker
-      const destHtml = `
-        <div class="nav-dest-flag-wrap">
-          <div class="nav-dest-flag">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="#ffffff" stroke="none">
-              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
-              <line x1="4" y1="22" x2="4" y2="15" stroke="#ffffff" stroke-width="3"></line>
-            </svg>
-          </div>
-          <span class="nav-dest-label">Bosh bekat</span>
-        </div>
-      `;
-
-      L.marker([startLat, startLng], {
-        icon: L.divIcon({
-          className: 'nav-dest-marker',
-          html: destHtml,
-          iconSize: [32, 32],
-          iconAnchor: [16, 28]
-        }),
-        zIndexOffset: 4000
-      }).addTo(navLayer);
-
-      // Fit bounds to show driver and Bosh bekat
-      try {
-        const bounds = L.latLngBounds([
-          [driverLat, driverLng],
-          [startLat, startLng],
-          ...pts
-        ]);
-        mapInstance.current.fitBounds(bounds, { padding: [60, 60] });
-      } catch (e) {}
-
-      setNavInfo({
-        distanceKm: (distanceMeters / 1000).toFixed(1),
-        durationMin: Math.max(1, Math.round(durationSec / 60)),
-        boshBekatName: boshBekat.name || "Bosh bekat"
-      });
-      setLoadingNav(false);
-    };
-
-    fetch(navOsrmUrl)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.routes && data.routes.length > 0) {
-          const route = data.routes[0];
-          const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-          drawNavigationLine(coords, route.distance, route.duration);
-        } else {
-          // Fallback straight line
-          const pts = [[driverLat, driverLng], [startLat, startLng]];
-          drawNavigationLine(pts, 10000, 900);
-        }
-      })
-      .catch(() => {
-        const pts = [[driverLat, driverLng], [startLat, startLng]];
-        drawNavigationLine(pts, 10000, 900);
-      });
-
-  }, [navToStartActive, driverLocation, assignedRoute]);
+    if (driverLocation && driverLocation.latitude && driverLocation.longitude) {
+      if (mapInstance.current) {
+        mapInstance.current.setView([driverLocation.latitude, driverLocation.longitude], 17, { animate: true });
+      }
+    } else if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (mapInstance.current) {
+            mapInstance.current.setView([pos.coords.latitude, pos.coords.longitude], 17, { animate: true });
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true }
+      );
+    }
+  };
 
   const handleCenterOnMe = () => {
+    userMovedMapRef.current = false;
     if (mapInstance.current && driverLocation && driverLocation.latitude) {
       mapInstance.current.setView([driverLocation.latitude, driverLocation.longitude], 16, { animate: true });
     }
   };
 
   const handleResetRouteView = () => {
+    userMovedMapRef.current = false;
+    setIsFollowing(false);
     if (mapInstance.current && assignedRoute) {
       const stops = (assignedRoute.stops || []).filter(s => s && s.lat && s.lng);
       if (stops.length > 0) {
@@ -344,12 +412,24 @@ export default function DriverMap({
     }
   };
 
+  const handleToggleFullscreen = () => {
+    setIsFullscreen(prev => {
+      const next = !prev;
+      setTimeout(() => {
+        if (mapInstance.current) {
+          mapInstance.current.invalidateSize();
+        }
+      }, 200);
+      return next;
+    });
+  };
+
   return (
-    <div className="driver-fullmap-container">
+    <div className={`driver-fullmap-container ${isFullscreen ? 'is-fullscreen' : ''}`}>
       <div ref={mapContainerRef} className="driver-fullmap-canvas" />
 
       {/* Route Badge Top Pill */}
-      {assignedRoute && (
+      {!navToStartActive && assignedRoute && (
         <div className="driver-route-top-pill">
           <div 
             className="driver-route-num-badge" 
@@ -364,7 +444,7 @@ export default function DriverMap({
         </div>
       )}
 
-      {/* Navigation Banner (When "Ketdik" is activated) */}
+      {/* Navigation Banner (When "Ketdik" is activated - NO "hisoblanmoqda..." text) */}
       {navToStartActive && (
         <div className="driver-nav-banner">
           <div className="nav-banner-icon">
@@ -373,7 +453,6 @@ export default function DriverMap({
           <div className="nav-banner-info">
             <div className="nav-banner-title">
               Bosh bekatga yo'nalish
-              {loadingNav && <span className="nav-loading"> (hisoblanmoqda...)</span>}
             </div>
             {navInfo && (
               <div className="nav-banner-stats">
@@ -397,6 +476,13 @@ export default function DriverMap({
 
       {/* Floating Action Controls on Right */}
       <div className="driver-map-action-controls">
+        <button 
+          className="driver-fab-btn" 
+          onClick={handleToggleFullscreen} 
+          title={isFullscreen ? "Kichiklashtirish" : "To'liq ekran"}
+        >
+          {isFullscreen ? <Minimize size={18} color="#0f172a" /> : <Maximize size={18} color="#0f172a" />}
+        </button>
         <button className="driver-fab-btn" onClick={handleCenterOnMe} title="Mening joylashuvim">
           <Navigation size={18} color="#0066FF" />
         </button>
@@ -411,6 +497,19 @@ export default function DriverMap({
             <Minus size={16} />
           </button>
         </div>
+      </div>
+
+      {/* Bottom Floating Ketdik Button: Zoom in and follow movement */}
+      <div className="driver-map-bottom-bar">
+        <button 
+          type="button"
+          className={`driver-ketdik-btn ${isFollowing ? 'is-following' : ''}`}
+          onClick={handleToggleFollow}
+        >
+          <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />
+          <span>{isFollowing ? "Kuzatilmoqda (Harakatda)" : "Ketdik"}</span>
+          {isFollowing && <span className="driver-ketdik-live-badge">Jonli</span>}
+        </button>
       </div>
     </div>
   );
