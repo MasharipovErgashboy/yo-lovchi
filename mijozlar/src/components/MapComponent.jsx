@@ -37,10 +37,15 @@ export default function MapComponent({ onSelectRoute, initialRouteId = null }) {
 
   // 1. Load Google Maps JS API
   useEffect(() => {
+    // Listen for Google Maps auth errors (e.g. invalid key, billing, or referrer error)
+    window.gm_authFailure = () => {
+      console.error("Google Maps authentication failed");
+      setMapError("Google Maps ruxsatida xatolik yuz berdi. Iltimos, Google Cloud-da 'Maps JavaScript API' yoqilganligini va to'lov hisobi (Billing) ulanganligini tekshiring.");
+    };
+
     const loader = new Loader({
       apiKey: GOOGLE_MAPS_API_KEY,
-      version: "weekly",
-      libraries: ["places"]
+      version: "weekly"
     });
 
     loader.load().then((google) => {
@@ -382,20 +387,24 @@ export default function MapComponent({ onSelectRoute, initialRouteId = null }) {
       </div>
 
       {/* Map Canvas */}
-      <div ref={mapRef} className="google-map-canvas">
-        {!mapLoaded && !mapError && (
-          <div className="map-loading">
-            <RefreshCw size={28} className="animate-spin" color="#3b82f6" />
-            <span>Xarita yuklanmoqda...</span>
-          </div>
-        )}
-        {mapError && (
-          <div className="map-error">
-            <Info size={32} color="#ef4444" />
-            <p>{mapError}</p>
-          </div>
-        )}
-      </div>
+      <div 
+        ref={mapRef} 
+        className="google-map-canvas" 
+        style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} 
+      />
+
+      {!mapLoaded && !mapError && (
+        <div className="map-loading">
+          <RefreshCw size={28} className="animate-spin" color="#3b82f6" />
+          <span>Xarita yuklanmoqda...</span>
+        </div>
+      )}
+      {mapError && (
+        <div className="map-error">
+          <Info size={32} color="#ef4444" />
+          <p style={{ maxWidth: '340px', lineHeight: 1.5 }}>{mapError}</p>
+        </div>
+      )}
 
       {/* Floating Status Bar */}
       <div className="map-floating-status">
