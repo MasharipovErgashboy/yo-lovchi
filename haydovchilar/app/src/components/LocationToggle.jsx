@@ -170,8 +170,8 @@ export default function LocationToggle({
             style={{ 
               backgroundColor: enabled ? 'var(--red)' : 'var(--blue-primary)',
               opacity: checking ? 0.7 : 1,
-              marginTop: '26px',
-              marginBottom: '12px'
+              marginTop: '8px',
+              marginBottom: '4px'
             }}
           >
             <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />
