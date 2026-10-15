@@ -1026,3 +1026,85 @@ def get_all_live_drivers() -> List[Dict[str, Any]]:
     conn.close()
     return [format_row(r) for r in rows]
 
+def get_dashboard_stats() -> Dict[str, Any]:
+    """Calculate real-time dashboard stats from the database."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # 1. Total approved drivers
+    cursor.execute("SELECT COUNT(*) as count FROM candidates WHERE status = 'approved';")
+    row = cursor.fetchone()
+    total_drivers = row.get("count", 0) if row else 0
+
+    # 2. Online drivers (is_online = true and updated in the last 10 minutes)
+    cursor.execute("""
+        SELECT COUNT(DISTINCT dl.driver_id) as count
+        FROM driver_locations dl
+        JOIN candidates c ON dl.driver_id = c.id
+        WHERE c.status = 'approved'
+          AND dl.is_online = true 
+          AND dl.updated_at >= NOW() - INTERVAL '10 minutes';
+    """)
+    row = cursor.fetchone()
+    online_drivers = row.get("count", 0) if row else 0
+
+    # 3. Offline drivers
+    offline_drivers = max(0, total_drivers - online_drivers)
+
+    # 4. Hozir yo'lda (active online drivers on an assigned route)
+    cursor.execute("""
+        SELECT COUNT(DISTINCT dl.driver_id) as count
+        FROM driver_locations dl
+        JOIN candidates c ON dl.driver_id = c.id
+        WHERE c.status = 'approved'
+          AND dl.is_online = true 
+          AND dl.route_id IS NOT NULL
+          AND dl.updated_at >= NOW() - INTERVAL '10 minutes';
+    """)
+    row = cursor.fetchone()
+    on_road = row.get("count", 0) if row else 0
+    if on_road > online_drivers:
+        on_road = online_drivers
+
+    # 5. Total active routes
+    cursor.execute("SELECT COUNT(*) as count FROM routes WHERE is_active = true;")
+    row = cursor.fetchone()
+    total_routes = row.get("count", 0) if row else 0
+
+    # 6. Pending candidates
+    cursor.execute("SELECT COUNT(*) as count FROM candidates WHERE status = 'pending';")
+    row = cursor.fetchone()
+    pending_candidates = row.get("count", 0) if row else 0
+
+    # 7. Recent activities
+    activities = []
+    cursor.execute("""
+        SELECT name, surname, status, created_at, updated_at
+        FROM candidates
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 6;
+    """)
+    for r in cursor.fetchall():
+        is_approved = r.get("status") == "approved"
+        action = "tasdiqlandi" if is_approved else "ariza topshirdi"
+        time_val = r.get("updated_at") if is_approved else r.get("created_at")
+        activities.append({
+            "title": f"{r.get('name', '')} {r.get('surname', '')} {action}",
+            "time": str(time_val or ''),
+            "status": r.get("status")
+        })
+
+    cursor.close()
+    conn.close()
+
+    return {
+        "total_drivers": total_drivers,
+        "online_drivers": online_drivers,
+        "offline_drivers": offline_drivers,
+        "on_road": on_road,
+        "total_routes": total_routes,
+        "pending_candidates": pending_candidates,
+        "recent_activities": activities
+    }
+
+

@@ -34,7 +34,8 @@ from database import (
     set_driver_offline,
     update_driver_capacity,
     get_live_drivers_for_route,
-    get_all_live_drivers
+    get_all_live_drivers,
+    get_dashboard_stats
 )
 from telegram_service import (
     send_approval_message,
@@ -590,5 +591,12 @@ def get_all_active_drivers(response: Response):
     """Get all active online drivers transmitting coordinates across all routes."""
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return get_all_live_drivers()
+
+@app.get("/api/dashboard/stats")
+def get_stats(response: Response):
+    """Get real-time statistics for the admin dashboard."""
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return get_dashboard_stats()
+
 
 
