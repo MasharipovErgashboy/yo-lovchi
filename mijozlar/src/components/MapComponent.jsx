@@ -784,65 +784,9 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
             </div>
           </div>
 
-          {/* Stops Timeline Slider & Stats (Smooth collapsible body) */}
+          {/* Bottom Sheet Body (Collapsible Stats Grid) */}
           <div className={`sheet-collapsible-body ${isSheetCollapsed ? 'collapsed' : 'expanded'}`}>
-            {/* Stops Timeline Slider */}
-            <div className="sheet-stops-timeline">
-              <button 
-                className="timeline-nav-btn"
-                onClick={() => setCurrentStopIndex(prev => Math.max(0, prev - 1))}
-                disabled={currentStopIndex === 0}
-              >
-                <ChevronLeft size={16} />
-              </button>
-
-              <div className="timeline-track-container">
-                <div className="timeline-track-line">
-                  <div 
-                    className="timeline-track-fill" 
-                    style={{ width: `${(currentStopIndex / (currentStops.length - 1)) * 100}%` }}
-                  />
-                </div>
-
-                <div className="timeline-stops-points">
-                  {currentStops.map((stopName, idx) => {
-                    const isPast = idx < currentStopIndex;
-                    const isCurrent = idx === currentStopIndex;
-
-                    return (
-                      <div 
-                        key={idx} 
-                        className={`timeline-stop-item ${isCurrent ? 'active' : ''}`}
-                        onClick={() => setCurrentStopIndex(idx)}
-                      >
-                        <div className="stop-point-circle">
-                          {isCurrent ? (
-                            <div className="current-bus-badge">
-                              <Bus size={12} color="#ffffff" />
-                            </div>
-                          ) : (
-                            <div className={`point-dot ${isPast ? 'past' : ''}`}></div>
-                          )}
-                        </div>
-                        <span className="stop-name-label">
-                          {stopName}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <button 
-                className="timeline-nav-btn"
-                onClick={() => setCurrentStopIndex(prev => Math.min(currentStops.length - 1, prev + 1))}
-                disabled={currentStopIndex === currentStops.length - 1}
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-
-            {/* Bottom Stats 3-Column Grid */}
+            {/* Bottom Stats 2-Column Grid */}
             <div className="sheet-stats-grid">
               <div className="sheet-stat-card">
                 <div className="stat-card-title green">
@@ -876,16 +820,6 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
                   </span>
                 </div>
                 <div className="stat-card-subtitle">Harakatda</div>
-              </div>
-
-              <div className="sheet-stat-card">
-                <div className="stat-card-title">
-                  <Clock size={16} />
-                  <span>
-                    {liveDrivers.filter(d => String(d.route_id) === String(selectedRoute.id)).length > 0 ? "3 daq" : "—"}
-                  </span>
-                </div>
-                <div className="stat-card-subtitle">Yaqin avtobus</div>
               </div>
             </div>
           </div>
