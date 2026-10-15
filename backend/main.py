@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -508,13 +508,15 @@ def update_location(payload: DriverLocationUpdate):
     return {"success": True, "location": loc}
 
 @app.get("/api/routes/{route_id}/live-drivers")
-def get_route_live_drivers(route_id: int):
+def get_route_live_drivers(route_id: int, response: Response):
     """Get active online drivers transmitting coordinates for a specific route."""
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return get_live_drivers_for_route(route_id)
 
 @app.get("/api/live-drivers")
-def get_all_active_drivers():
+def get_all_active_drivers(response: Response):
     """Get all active online drivers transmitting coordinates across all routes."""
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return get_all_live_drivers()
 
 

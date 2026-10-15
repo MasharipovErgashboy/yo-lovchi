@@ -46,7 +46,9 @@ const MAP_LAYERS = {
 export default function MapComponent({ initialRouteId = null, onBackToRoutes }) {
   const mapContainerRef = useRef(null);
   const mapInstance = useRef(null);
-  const layerGroupRef = useRef(null);
+  const routeLayerGroupRef = useRef(null);
+  const busLayerGroupRef = useRef(null);
+  const busMarkersRef = useRef({});
   const tileLayerRef = useRef(null);
 
   const [routes, setRoutes] = useState([]);
@@ -57,7 +59,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
   const [currentStopIndex, setCurrentStopIndex] = useState(2); // e.g. 5-bekat (hozir)
   const [activeLayer, setActiveLayer] = useState('google');
   const [toastMessage, setToastMessage] = useState(null);
-  const [isSheetCollapsed, setIsSheetCollapsed] = useState(false);
+  const [isSheetCollapsed, setIsSheetCollapsed] = useState(true);
   const [collapsedHeight, setCollapsedHeight] = useState(96);
   const [expandedHeight, setExpandedHeight] = useState(280);
   const sheetRef = useRef(null);
@@ -100,42 +102,45 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
     };
   }, [selectedRoute, isSheetCollapsed]);
 
-  // Fetch routes and live drivers from backend
-  const fetchData = async () => {
+  // Fetch routes from backend
+  const fetchRoutes = async () => {
     try {
-      const [rRes, dRes] = await Promise.all([
-        fetch('/api/routes'),
-        fetch('/api/live-drivers')
-      ]);
-
-      let routesData = [];
+      const rRes = await fetch('/api/routes');
       if (rRes.ok) {
-        routesData = await rRes.json();
+        const routesData = await rRes.json();
         setRoutes(routesData || []);
-      }
-
-      if (dRes.ok) {
-        const driversData = await dRes.json();
-        setLiveDrivers(driversData || []);
-      }
-
-      if (routesData.length > 0) {
-        // Pick initial route or first route
-        const found = initialRouteId 
-          ? routesData.find(r => String(r.id) === String(initialRouteId)) 
-          : routesData[0];
-        setSelectedRoute(prev => prev || found || routesData[0]);
+        if (routesData && routesData.length > 0) {
+          const found = initialRouteId 
+            ? routesData.find(r => String(r.id) === String(initialRouteId)) 
+            : routesData[0];
+          setSelectedRoute(prev => prev || found || routesData[0]);
+        }
       }
     } catch (e) {
-      console.error("Map data fetch error:", e);
+      console.error("Map routes fetch error:", e);
     } finally {
       setLoading(false);
     }
   };
 
+  // Ultra-fast real-time live drivers fetcher (no caching)
+  const fetchLiveDrivers = async () => {
+    try {
+      const dRes = await fetch('/api/live-drivers', { cache: 'no-store' });
+      if (dRes.ok) {
+        const driversData = await dRes.json();
+        setLiveDrivers(driversData || []);
+      }
+    } catch (e) {
+      // Quiet background failure to avoid interrupting UI
+    }
+  };
+
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 4000);
+    fetchRoutes();
+    fetchLiveDrivers();
+    // Real-time polling every 2 seconds without freezing
+    const interval = setInterval(fetchLiveDrivers, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -162,7 +167,8 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       maxZoom: initialLayer.maxZoom
     }).addTo(map);
 
-    layerGroupRef.current = L.layerGroup().addTo(map);
+    routeLayerGroupRef.current = L.layerGroup().addTo(map);
+    busLayerGroupRef.current = L.layerGroup().addTo(map);
     mapInstance.current = map;
 
     map.on('movestart dragstart zoomstart', () => {
@@ -187,11 +193,19 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
     tileLayerRef.current.bringToBack();
   }, [activeLayer]);
 
-  // Update map polyline, stops, and buses whenever selectedRoute or liveDrivers changes
+  // Clean up existing bus markers when selected route switches
   useEffect(() => {
-    if (!mapInstance.current || !layerGroupRef.current || !selectedRoute) return;
+    if (busLayerGroupRef.current) {
+      busLayerGroupRef.current.clearLayers();
+    }
+    busMarkersRef.current = {};
+  }, [selectedRoute?.id]);
 
-    const layerGroup = layerGroupRef.current;
+  // 1. Draw route polyline and stops ONLY when route changes or currentStopIndex changes (Runs once per route!)
+  useEffect(() => {
+    if (!mapInstance.current || !routeLayerGroupRef.current || !selectedRoute) return;
+
+    const layerGroup = routeLayerGroupRef.current;
     layerGroup.clearLayers();
 
     const routeColor = selectedRoute.color && selectedRoute.color.startsWith('#') 
@@ -224,15 +238,15 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         .map(s => [s.lat, s.lng]);
     }
 
-    // Default sample path if no coordinates exist yet (Toshkent → Chirchiq as in Image 3)
+    // Default sample path if no coordinates exist yet
     if (polyPoints.length < 2) {
       polyPoints = [
-        [41.3111, 69.2797], // Tashkent
+        [41.3111, 69.2797],
         [41.3350, 69.3200],
         [41.3650, 69.3700],
         [41.3900, 69.4300],
         [41.4200, 69.5000],
-        [41.4689, 69.5822]  // Chirchiq
+        [41.4689, 69.5822]
       ];
       stops = [
         { name: "Do'stlik bekati", lat: 41.3111, lng: 69.2797 },
@@ -291,16 +305,81 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       stopMarker.addTo(layerGroup);
     });
 
-    // 3. Draw Bus Markers (Blue = Siz tomonga kelmoqda, Green = Sizdan uzoqlashmoqda)
-    // Find active drivers on this route
-    const routeDrivers = liveDrivers.filter(d => String(d.route_id) === String(selectedRoute.id));
+    // Auto-fit bounds ONLY on initial load of this route, never on driver location updates or user pan/zoom!
+    if (lastFittedRouteId.current !== selectedRoute.id) {
+      lastFittedRouteId.current = selectedRoute.id;
+      userHasMovedMap.current = false;
+      const bounds = L.latLngBounds(polyPoints);
+      mapInstance.current.fitBounds(bounds, {
+        paddingTopLeft: [40, 40],
+        paddingBottomRight: [40, 260]
+      });
+    }
 
-    // If live drivers exist, render them
-    if (routeDrivers.length > 0) {
-      routeDrivers.forEach((driver, dIdx) => {
-        const isApproaching = dIdx % 2 === 0; // alternate for demo/live
-        const busColor = isApproaching ? '#0066FF' : '#10B981';
+  }, [selectedRoute, currentStopIndex]);
 
+  // 2. Real-time Live Drivers Marker Layer (Non-freezing, smooth setLatLng and instant removal)
+  useEffect(() => {
+    if (!mapInstance.current || !busLayerGroupRef.current || !selectedRoute) return;
+
+    const routeDrivers = (liveDrivers || []).filter(
+      d => String(d.route_id) === String(selectedRoute.id) && d.is_online !== false
+    );
+
+    const activeIds = new Set(routeDrivers.map(d => String(d.driver_id || d.id)));
+
+    // A. Remove markers for drivers who went offline or left this route
+    Object.keys(busMarkersRef.current).forEach(id => {
+      if (!activeIds.has(id)) {
+        if (busMarkersRef.current[id]?.marker) {
+          busMarkersRef.current[id].marker.remove();
+        }
+        delete busMarkersRef.current[id];
+      }
+    });
+
+    // B. Smoothly update existing markers or create new ones
+    routeDrivers.forEach((driver, dIdx) => {
+      const id = String(driver.driver_id || driver.id);
+      const lat = Number(driver.latitude);
+      const lng = Number(driver.longitude);
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+
+      const isApproaching = dIdx % 2 === 0;
+      const busColor = isApproaching ? '#0066FF' : '#10B981';
+
+      let capText = "Bo'sh joy ko'p";
+      let capColor = "#10B981";
+      if (driver.capacity === 'tola') {
+        capText = "To'la";
+        capColor = "#EF4444";
+      } else if (driver.capacity === 'ozroq') {
+        capText = "Ozroq joy bor";
+        capColor = "#F59E0B";
+      }
+
+      const popupHtml = `
+        <div style="font-family: sans-serif; font-size: 13px; padding: 6px;">
+          <strong>${driver.name} ${driver.surname || ''}</strong>
+          <div style="color: #64748b; font-size: 12px; margin-top: 2px;">
+            ${driver.route_number || selectedRoute.number}-marshrut
+          </div>
+          <div style="color: ${capColor}; font-weight: 700; margin-top: 4px;">
+            ${capText}
+          </div>
+        </div>
+      `;
+
+      if (busMarkersRef.current[id]) {
+        // Marker already exists -> smoothly update position without re-creating DOM
+        const existing = busMarkersRef.current[id];
+        existing.marker.setLatLng([lat, lng]);
+        if (existing.capacity !== driver.capacity) {
+          existing.marker.setPopupContent(popupHtml);
+          existing.capacity = driver.capacity;
+        }
+      } else {
+        // Create new marker
         const busIconHtml = `
           <div class="custom-bus-marker ${isApproaching ? 'approaching' : 'leaving'}">
             <div class="bus-circle-icon" style="background: ${busColor}">
@@ -316,7 +395,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
           </div>
         `;
 
-        const busMarker = L.marker([driver.latitude, driver.longitude], {
+        const busMarker = L.marker([lat, lng], {
           icon: L.divIcon({
             className: 'bus-marker-wrapper',
             html: busIconHtml,
@@ -326,44 +405,17 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
           zIndexOffset: 1000
         });
 
-        let capText = "Bo'sh joy ko'p";
-        let capColor = "#10B981";
-        if (driver.capacity === 'tola') {
-          capText = "To'la";
-          capColor = "#EF4444";
-        } else if (driver.capacity === 'ozroq') {
-          capText = "Ozroq joy bor";
-          capColor = "#F59E0B";
-        }
+        busMarker.bindPopup(popupHtml);
+        busMarker.addTo(busLayerGroupRef.current);
 
-        busMarker.bindPopup(`
-          <div style="font-family: sans-serif; font-size: 13px; padding: 6px;">
-            <strong>${driver.name} ${driver.surname}</strong>
-            <div style="color: #64748b; font-size: 12px; margin-top: 2px;">
-              ${driver.route_number || selectedRoute.number}-marshrut
-            </div>
-            <div style="color: ${capColor}; font-weight: 700; margin-top: 4px;">
-              ${capText}
-            </div>
-          </div>
-        `);
+        busMarkersRef.current[id] = {
+          marker: busMarker,
+          capacity: driver.capacity
+        };
+      }
+    });
 
-        busMarker.addTo(layerGroup);
-      });
-    }
-
-    // Auto-fit bounds ONLY on initial load of this route, never on polling interval or user pan/zoom!
-    if (lastFittedRouteId.current !== selectedRoute.id) {
-      lastFittedRouteId.current = selectedRoute.id;
-      userHasMovedMap.current = false;
-      const bounds = L.latLngBounds(polyPoints);
-      mapInstance.current.fitBounds(bounds, {
-        paddingTopLeft: [40, 40],
-        paddingBottomRight: [40, 260]
-      });
-    }
-
-  }, [selectedRoute, liveDrivers, currentStopIndex]);
+  }, [liveDrivers, selectedRoute]);
 
   // Center map on user GPS location
   const handleLocateMe = () => {

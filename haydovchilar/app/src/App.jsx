@@ -161,16 +161,16 @@ function App() {
     }).catch(err => console.error("Capacity change error:", err));
   };
 
-  // Location Toggle Handler (with offline signal)
-  const handleLocationToggle = (newEnabled) => {
+  // Location Toggle Handler (with immediate online/offline GPS signal)
+  const handleLocationToggle = (newEnabled, currentPos = null) => {
     setLocationEnabled(newEnabled);
+
+    const params = new URLSearchParams(window.location.search);
+    const phone = params.get('phone');
+    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
 
     if (!newEnabled) {
       // Driver turned off location -> notify backend immediately
-      const params = new URLSearchParams(window.location.search);
-      const phone = params.get('phone');
-      const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-
       fetch('/api/driver/offline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -179,6 +179,26 @@ function App() {
           phone: phone || null
         })
       }).catch(err => console.error("Offline error:", err));
+    } else {
+      // Driver turned on location -> notify backend immediately with current GPS
+      const lat = currentPos?.coords?.latitude || driverLocation?.latitude;
+      const lng = currentPos?.coords?.longitude || driverLocation?.longitude;
+      if (lat && lng && (phone || tgUserId)) {
+        fetch('/api/driver/location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            telegram_id: tgUserId || null,
+            phone: phone || null,
+            route_id: assignedRoute?.id || null,
+            latitude: lat,
+            longitude: lng,
+            heading: currentPos?.coords?.heading || driverLocation?.heading || 0.0,
+            speed: currentPos?.coords?.speed ? Math.round(currentPos.coords.speed * 3.6) : (driverLocation?.speed || 0.0),
+            capacity: capacity
+          })
+        }).catch(err => console.error("Immediate GPS send error:", err));
+      }
     }
   };
 
@@ -231,15 +251,15 @@ function App() {
       watchId = navigator.geolocation.watchPosition(
         sendPosition,
         (err) => console.warn("Watch position error:", err),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
       );
     }
 
     const interval = setInterval(() => {
-      if ("geolocation" in navigator) {
+      if ("geolocation" in navigator && locationEnabled) {
         navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true });
       }
-    }, 4000);
+    }, 2000);
 
     return () => {
       if (watchId !== null && "geolocation" in navigator) {
@@ -361,6 +381,7 @@ function App() {
             <DriverMap 
               assignedRoute={assignedRoute} 
               driverLocation={driverLocation} 
+              locationEnabled={locationEnabled}
               navToStartActive={navToStartActive}
               onClearNavToStart={() => setNavToStartActive(false)}
             />

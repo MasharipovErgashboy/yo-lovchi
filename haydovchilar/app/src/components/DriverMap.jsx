@@ -7,6 +7,7 @@ import { Navigation, Plus, Minus, Compass, X, Flag, Clock, MapPin, Maximize, Min
 export default function DriverMap({ 
   assignedRoute, 
   driverLocation, 
+  locationEnabled = false,
   navToStartActive = false, 
   onClearNavToStart 
 }) {
@@ -495,7 +496,7 @@ export default function DriverMap({
       )}
 
       {/* Floating Action Controls on Right */}
-      <div className={`driver-map-action-controls ${navToStartActive ? 'has-bottom-btn' : ''}`}>
+      <div className={`driver-map-action-controls ${(navToStartActive || locationEnabled) ? 'has-bottom-btn' : ''}`}>
         <button 
           className="driver-fab-btn" 
           onClick={handleToggleFullscreen} 
@@ -530,8 +531,8 @@ export default function DriverMap({
         </div>
       </div>
 
-      {/* Bottom Floating Ketdik Button: ONLY show when navigating to Bosh bekat */}
-      {navToStartActive && (
+      {/* Bottom Floating Ketdik Button: show when on route with location on OR navigating to start */}
+      {(navToStartActive || locationEnabled) && (
         <div className="driver-map-bottom-bar">
           <button 
             type="button"

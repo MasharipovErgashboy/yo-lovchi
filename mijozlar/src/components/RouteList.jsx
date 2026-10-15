@@ -23,39 +23,42 @@ export default function RouteList({ onSelectRoute }) {
   const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = async () => {
+  const fetchRoutes = async () => {
     try {
-      const [routesRes, driversRes] = await Promise.all([
-        fetch('/api/routes'),
-        fetch('/api/live-drivers')
-      ]);
-
-      let routesData = [];
+      const routesRes = await fetch('/api/routes');
       if (routesRes.ok) {
-        routesData = await routesRes.json();
+        const routesData = await routesRes.json();
         setRoutes(routesData || []);
         if (routesData.length > 0 && !selectedRouteId) {
           setSelectedRouteId(routesData[0].id);
         }
       }
-
-      if (driversRes.ok) {
-        const driversData = await driversRes.json();
-        setLiveDrivers(driversData || []);
-      }
     } catch (e) {
-      console.error("Ma'lumotlarni yuklashda xatolik:", e);
+      console.error("Marshrutlarni yuklashda xatolik:", e);
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchLiveDrivers = async () => {
+    try {
+      const driversRes = await fetch('/api/live-drivers', { cache: 'no-store' });
+      if (driversRes.ok) {
+        const driversData = await driversRes.json();
+        setLiveDrivers(driversData || []);
+      }
+    } catch (e) {
+      // Quiet background failure
+    }
+  };
+
   useEffect(() => {
-    fetchData();
-    // Fast real-time polling every 3 seconds for instant capacity and movement updates
-    const interval = setInterval(fetchData, 3000);
+    fetchRoutes();
+    fetchLiveDrivers();
+    // Real-time polling every 2 seconds for instant updates
+    const interval = setInterval(fetchLiveDrivers, 2000);
     return () => clearInterval(interval);
-  }, [selectedRouteId]);
+  }, []);
 
   if (loading) {
     return (

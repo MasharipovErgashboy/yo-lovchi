@@ -105,10 +105,10 @@ export default function LocationToggle({
 
           // Within 1 km or verified: activate location!
           setDistanceError(null);
-          setEnabled(true);
           if (onLocationUpdate) {
             onLocationUpdate(position);
           }
+          setEnabled(true, position);
         },
         (error) => {
           setChecking(false);
