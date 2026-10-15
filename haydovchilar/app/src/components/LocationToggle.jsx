@@ -75,61 +75,194 @@ export default function LocationToggle({
 }) {
   const [checking, setChecking] = useState(false);
   const [distanceError, setDistanceError] = useState(null);
+  const [gpsPromptModal, setGpsPromptModal] = useState(null); // 'turn_on' | 'turn_off' | null
 
-  const handleToggle = () => {
-    if (!enabled) {
-      if (!("geolocation" in navigator)) {
-        alert("Qurilmangizda GPS joylashuvni aniqlash mavjud emas.");
+  const openDeviceSettings = () => {
+    const tg = window.Telegram?.WebApp;
+    const lm = tg?.LocationManager;
+    if (lm && typeof lm.openSettings === 'function') {
+      try {
+        lm.openSettings();
+      } catch (e) {
+        console.warn("LocationManager openSettings error:", e);
+      }
+    } else {
+      alert("Iltimos, telefoningiz sozlamalaridan GPS (Joylashuv)ni o'zgartiring.");
+    }
+  };
+
+  const startLocationActivation = () => {
+    const tg = window.Telegram?.WebApp;
+    const lm = tg?.LocationManager;
+
+    setChecking(true);
+
+    const onPosSuccess = (position) => {
+      setChecking(false);
+      setGpsPromptModal(null);
+      const driverLat = position.coords.latitude;
+      const driverLng = position.coords.longitude;
+
+      // If assigned route exists, verify 1 km distance rule
+      if (assignedRoute) {
+        const minDist = calculateMinDistanceToRoute(driverLat, driverLng, assignedRoute);
+        if (minDist > 1000) {
+          setDistanceError({
+            distanceKm: (minDist / 1000).toFixed(1),
+            routeName: assignedRoute.name || `${assignedRoute.number}-marshrut`,
+            driverCoords: { lat: driverLat, lng: driverLng }
+          });
+          return;
+        }
+      }
+
+      // Within 1 km or verified: activate location!
+      setDistanceError(null);
+      if (onLocationUpdate) {
+        onLocationUpdate(position);
+      }
+      setEnabled(true, position);
+    };
+
+    // 1. If Telegram LocationManager is available
+    if (lm && typeof lm.getLocation === 'function') {
+      // If we already know device GPS switch is OFF in Android
+      if (lm.isInited && !lm.isLocationAvailable) {
+        setChecking(false);
+        if (typeof lm.openSettings === 'function') {
+          try { lm.openSettings(); } catch (e) {}
+        }
+        setGpsPromptModal('turn_on');
         return;
       }
 
-      setChecking(true);
-
-      const onPosSuccess = (position) => {
-        setChecking(false);
-        const driverLat = position.coords.latitude;
-        const driverLng = position.coords.longitude;
-
-        // If assigned route exists, verify 1 km distance rule
-        if (assignedRoute) {
-          const minDist = calculateMinDistanceToRoute(driverLat, driverLng, assignedRoute);
-          if (minDist > 1000) {
-            setDistanceError({
-              distanceKm: (minDist / 1000).toFixed(1),
-              routeName: assignedRoute.name || `${assignedRoute.number}-marshrut`,
-              driverCoords: { lat: driverLat, lng: driverLng }
-            });
-            return;
+      lm.getLocation((pos) => {
+        if (pos && typeof pos.latitude === 'number' && typeof pos.longitude === 'number') {
+          onPosSuccess({
+            coords: {
+              latitude: pos.latitude,
+              longitude: pos.longitude,
+              heading: pos.course || 0,
+              speed: pos.speed || 0,
+              accuracy: pos.accuracy || 10
+            }
+          });
+        } else {
+          // If Telegram LocationManager didn't return coordinates (e.g. GPS off)
+          setChecking(false);
+          if (lm && !lm.isLocationAvailable && typeof lm.openSettings === 'function') {
+            try { lm.openSettings(); } catch (e) {}
+            setGpsPromptModal('turn_on');
+          } else {
+            fallbackHtml5(onPosSuccess);
           }
         }
+      });
+      return;
+    }
 
-        // Within 1 km or verified: activate location!
-        setDistanceError(null);
-        if (onLocationUpdate) {
-          onLocationUpdate(position);
-        }
-        setEnabled(true, position);
-      };
+    // 2. Standard HTML5 Geolocation fallback
+    fallbackHtml5(onPosSuccess);
+  };
 
-      const onPosError = (error) => {
-        // Fallback to standard cellular/wifi accuracy if high accuracy GPS times out
-        navigator.geolocation.getCurrentPosition(
-          onPosSuccess,
-          (err2) => {
-            setChecking(false);
-            alert("Joylashuvni aniqlashda xatolik yuz berdi. Iltimos telefoningiz sozlamalarida GPS ni yoqing: " + (err2.message || error.message));
-          },
-          { enableHighAccuracy: false, timeout: 8000, maximumAge: 5000 }
-        );
-      };
+  const fallbackHtml5 = (onPosSuccess) => {
+    if (!("geolocation" in navigator)) {
+      setChecking(false);
+      alert("Qurilmangizda GPS joylashuvni aniqlash mavjud emas.");
+      return;
+    }
 
+    const onPosError = (error) => {
       navigator.geolocation.getCurrentPosition(
         onPosSuccess,
-        onPosError,
-        { enableHighAccuracy: true, timeout: 6000, maximumAge: 3000 }
+        (err2) => {
+          setChecking(false);
+          const tg = window.Telegram?.WebApp;
+          const lm = tg?.LocationManager;
+          if (lm && typeof lm.openSettings === 'function') {
+            try { lm.openSettings(); } catch (e) {}
+            setGpsPromptModal('turn_on');
+          } else {
+            alert("Joylashuvni aniqlashda xatolik yuz berdi. Iltimos telefoningiz sozlamalarida GPS ni yoqing: " + (err2.message || error.message));
+          }
+        },
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 5000 }
       );
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      onPosSuccess,
+      onPosError,
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 3000 }
+    );
+  };
+
+  // Auto-detect when driver switches back from Android Settings
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp;
+    const lm = tg?.LocationManager;
+
+    if (lm && typeof lm.init === 'function' && !lm.isInited) {
+      try { lm.init(); } catch (e) {}
+    }
+
+    const handleResumeOrUpdate = () => {
+      if (gpsPromptModal === 'turn_on' && lm && lm.isLocationAvailable) {
+        setGpsPromptModal(null);
+        startLocationActivation();
+      }
+    };
+
+    if (tg && typeof tg.onEvent === 'function') {
+      tg.onEvent('locationManagerUpdated', handleResumeOrUpdate);
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleResumeOrUpdate();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', handleResumeOrUpdate);
+
+    return () => {
+      if (tg && typeof tg.offEvent === 'function') {
+        tg.offEvent('locationManagerUpdated', handleResumeOrUpdate);
+      }
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', handleResumeOrUpdate);
+    };
+  }, [gpsPromptModal, assignedRoute]);
+
+  const handleToggle = () => {
+    const tg = window.Telegram?.WebApp;
+    const lm = tg?.LocationManager;
+
+    if (!enabled) {
+      // Turning ON
+      if (lm && typeof lm.init === 'function' && !lm.isInited) {
+        lm.init(() => {
+          startLocationActivation();
+        });
+      } else {
+        startLocationActivation();
+      }
     } else {
+      // Turning OFF
+      // 1. Immediately turn off location in app and inform backend
       setEnabled(false);
+
+      // 2. Open Android device location settings directly in response to user click
+      if (lm && typeof lm.openSettings === 'function') {
+        try {
+          lm.openSettings();
+        } catch (e) {
+          console.warn("openSettings error:", e);
+        }
+      }
+
+      // 3. Show turn-off guidance modal
+      setGpsPromptModal('turn_off');
     }
   };
 
@@ -181,6 +314,74 @@ export default function LocationToggle({
           </button>
         </div>
       </div>
+
+      {/* Android Turn-On GPS Modal */}
+      {gpsPromptModal === 'turn_on' && (
+        <div className="driver-modal-overlay" onClick={() => setGpsPromptModal(null)}>
+          <div className="driver-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="driver-modal-close" onClick={() => setGpsPromptModal(null)}>
+              <X size={20} />
+            </button>
+            <div className="driver-modal-icon-wrap warning">
+              <AlertTriangle size={36} color="#ef4444" />
+            </div>
+            <h3 className="driver-modal-title">Telefonda GPS o'chirilgan</h3>
+            <p className="driver-modal-desc">
+              Yo'lovchilarga real vaqtda ko'rinish uchun telefoningiz sozlamalarida joylashuv (GPS)ni yoqing.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px' }}>
+              <button 
+                className="btn-primary" 
+                onClick={openDeviceSettings}
+                style={{ width: '100%', fontSize: '15px' }}
+              >
+                <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />
+                <span>Sozlamalarni ochish (GPS yoqish)</span>
+              </button>
+              <button 
+                className="btn-secondary" 
+                onClick={() => setGpsPromptModal(null)}
+              >
+                Bekor qilish
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Android Turn-Off GPS Guidance Modal */}
+      {gpsPromptModal === 'turn_off' && (
+        <div className="driver-modal-overlay" onClick={() => setGpsPromptModal(null)}>
+          <div className="driver-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="driver-modal-close" onClick={() => setGpsPromptModal(null)}>
+              <X size={20} />
+            </button>
+            <div className="driver-modal-icon-wrap success">
+              <CheckCircle2 size={36} color="#10b981" />
+            </div>
+            <h3 className="driver-modal-title">Joylashuv to'xtatildi</h3>
+            <p className="driver-modal-desc">
+              Ilovada joylashuv uzatish to'xtatildi. Batareyani tejash uchun ochilgan sozlamalarda telefon GPS'ini ham o'chirib qo'yishingiz mumkin.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '16px' }}>
+              <button 
+                className="btn-primary" 
+                onClick={openDeviceSettings}
+                style={{ width: '100%', fontSize: '15px', backgroundColor: '#475569' }}
+              >
+                <Navigation size={18} style={{ transform: 'rotate(45deg)' }} />
+                <span>Sozlamalarni ochish (GPS o'chirish)</span>
+              </button>
+              <button 
+                className="btn-secondary" 
+                onClick={() => setGpsPromptModal(null)}
+              >
+                Tushunarli
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1 KM Distance Exceeded Modal */}
       {distanceError && (

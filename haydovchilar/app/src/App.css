@@ -1533,3 +1533,35 @@
   color: #94a3b8;
 }
 
+.driver-modal-icon-wrap.success {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #ecfdf5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px auto;
+}
+
+.btn-secondary {
+  width: 100%;
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 0.1s, background-color 0.2s;
+}
+.btn-secondary:active {
+  transform: scale(0.98);
+  background-color: #e2e8f0;
+}
+

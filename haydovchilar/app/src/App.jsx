@@ -45,6 +45,9 @@ function App() {
         if (typeof tg.setBackgroundColor === 'function') {
           try { tg.setBackgroundColor('#F0F4F8'); } catch (e) {}
         }
+        if (tg.LocationManager && typeof tg.LocationManager.init === 'function') {
+          try { tg.LocationManager.init(); } catch (e) {}
+        }
       } catch (e) {
         console.error("Telegram WebApp init error:", e);
       }
@@ -274,6 +277,28 @@ function App() {
       }
     };
 
+    const sendPositionFromLm = (loc) => {
+      if (!loc || typeof loc.latitude !== 'number' || typeof loc.longitude !== 'number') return;
+      sendPosition({
+        coords: {
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          heading: loc.course || 0.0,
+          speed: loc.speed || 0.0,
+          accuracy: loc.accuracy || 10
+        }
+      });
+    };
+
+    const tg = window.Telegram?.WebApp;
+    const lm = tg?.LocationManager;
+
+    if (lm && lm.isLocationAvailable && typeof lm.getLocation === 'function') {
+      try {
+        lm.getLocation(sendPositionFromLm);
+      } catch (e) {}
+    }
+
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         sendPosition,
@@ -291,8 +316,15 @@ function App() {
     }
 
     const interval = setInterval(() => {
-      if ("geolocation" in navigator && isOnlineRef.current) {
-        navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true });
+      if (isOnlineRef.current) {
+        if (lm && lm.isLocationAvailable && typeof lm.getLocation === 'function') {
+          try {
+            lm.getLocation(sendPositionFromLm);
+          } catch (e) {}
+        }
+        if ("geolocation" in navigator) {
+          navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true });
+        }
       }
     }, 2000);
 
