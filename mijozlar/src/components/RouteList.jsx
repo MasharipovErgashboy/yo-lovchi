@@ -117,6 +117,17 @@ export default function RouteList({ onSelectRoute }) {
       }
     }
 
+    let direction = 'ketmoqda';
+    const polyPoints = Array.isArray(driverRoute?.polyline) && driverRoute.polyline.length >= 2
+      ? driverRoute.polyline.map(p => [p[0], p[1]])
+      : (stops.filter(s => s && typeof s.lat === 'number' && typeof s.lng === 'number').map(s => [s.lat, s.lng]));
+
+    if (polyPoints.length >= 2 && driver.latitude && driver.longitude) {
+      const distToStart = getDistanceMeters(Number(driver.latitude), Number(driver.longitude), polyPoints[0][0], polyPoints[0][1]);
+      const distToEnd = getDistanceMeters(Number(driver.latitude), Number(driver.longitude), polyPoints[polyPoints.length - 1][0], polyPoints[polyPoints.length - 1][1]);
+      direction = distToStart <= distToEnd ? 'ketmoqda' : 'kelmoqda';
+    }
+
     return {
       driverId: driver.driver_id,
       driverName: `${driver.name} ${driver.surname || ''}`,
@@ -131,7 +142,10 @@ export default function RouteList({ onSelectRoute }) {
       capacity: driver.capacity || "bosh",
       currentStopName,
       nextStopName,
-      etaMinutes
+      etaMinutes,
+      direction,
+      directionText: direction === 'ketmoqda' ? 'Ketmoqda' : 'Kelmoqda',
+      directionColor: direction === 'ketmoqda' ? '#0066FF' : '#10B981'
     };
   });
 

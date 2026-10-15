@@ -64,8 +64,8 @@ export default function VehicleCard({
           <div>
             <div className="vehicle-driver-name">{driverName}</div>
             <div className="vehicle-sub-status">
-              <span className="live-pulsing-dot"></span>
-              {routeName} • Harakatda
+              <span className="live-pulsing-dot" style={{ backgroundColor: vehicle.directionColor || '#0066FF' }}></span>
+              {routeName} • <strong style={{ color: vehicle.directionColor || '#0066FF' }}>{vehicle.directionText || 'Ketmoqda'}</strong>
             </div>
           </div>
         </div>

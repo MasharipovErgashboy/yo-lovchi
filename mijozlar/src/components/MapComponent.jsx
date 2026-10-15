@@ -43,6 +43,107 @@ const MAP_LAYERS = {
   }
 };
 
+// Distance calculation utility (Haversine formula in meters)
+function getDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371e3;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function getDistanceToSegment(pLat, pLng, aLat, aLng, bLat, bLng) {
+  const dAB = getDistanceMeters(aLat, aLng, bLat, bLng);
+  if (dAB === 0) return getDistanceMeters(pLat, pLng, aLat, aLng);
+
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      ((pLat - aLat) * (bLat - aLat) + (pLng - aLng) * (bLng - aLng)) /
+        ((bLat - aLat) ** 2 + (bLng - aLng) ** 2)
+    )
+  );
+
+  const projLat = aLat + t * (bLat - aLat);
+  const projLng = aLng + t * (bLng - aLng);
+  return getDistanceMeters(pLat, pLng, projLat, projLng);
+}
+
+function getBearing(lat1, lon1, lat2, lon2) {
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const y = Math.sin(dLon) * Math.cos((lat2 * Math.PI) / 180);
+  const x =
+    Math.cos((lat1 * Math.PI) / 180) * Math.sin((lat2 * Math.PI) / 180) -
+    Math.sin((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.cos(dLon);
+  const brng = (Math.atan2(y, x) * 180) / Math.PI;
+  return (brng + 360) % 360;
+}
+
+function getRouteSegmentBearing(driverLat, driverLng, polyPoints) {
+  if (!polyPoints || polyPoints.length < 2) return null;
+  let minDist = Infinity;
+  let bestBearing = 0;
+
+  for (let i = 0; i < polyPoints.length - 1; i++) {
+    const p1 = polyPoints[i];
+    const p2 = polyPoints[i + 1];
+    const d = getDistanceToSegment(driverLat, driverLng, p1[0], p1[1], p2[0], p2[1]);
+    if (d < minDist) {
+      minDist = d;
+      bestBearing = getBearing(p1[0], p1[1], p2[0], p2[1]);
+    }
+  }
+  return bestBearing;
+}
+
+// Determines whether driver is "ketmoqda" (from start point to end) or "kelmoqda" (from end to start)
+function determineDriverDirection(driver, prevDriverState, polyPoints, fallbackIndex = 0) {
+  const lat = Number(driver.latitude);
+  const lng = Number(driver.longitude);
+  const heading = Number(driver.heading);
+
+  const routeBearing = getRouteSegmentBearing(lat, lng, polyPoints);
+
+  // 1. Check movement vector if previous coordinates exist and driver moved >= 2 meters
+  if (prevDriverState && prevDriverState.prevLat && prevDriverState.prevLng) {
+    const distMoved = getDistanceMeters(prevDriverState.prevLat, prevDriverState.prevLng, lat, lng);
+    if (distMoved >= 2 && routeBearing !== null) {
+      const moveBearing = getBearing(prevDriverState.prevLat, prevDriverState.prevLng, lat, lng);
+      let diff = Math.abs(moveBearing - routeBearing) % 360;
+      if (diff > 180) diff = 360 - diff;
+      return diff < 90 ? 'ketmoqda' : 'kelmoqda';
+    }
+  }
+
+  // 2. Check GPS heading from mobile sensor
+  if (heading && !isNaN(heading) && (driver.speed > 1 || heading > 0) && routeBearing !== null) {
+    let diff = Math.abs(heading - routeBearing) % 360;
+    if (diff > 180) diff = 360 - diff;
+    return diff < 90 ? 'ketmoqda' : 'kelmoqda';
+  }
+
+  // 3. Keep previous direction if already identified
+  if (prevDriverState && prevDriverState.direction) {
+    return prevDriverState.direction;
+  }
+
+  // 4. Position-based check: closer to start point = 'ketmoqda', closer to end point = 'kelmoqda'
+  if (polyPoints && polyPoints.length >= 2) {
+    const distToStart = getDistanceMeters(lat, lng, polyPoints[0][0], polyPoints[0][1]);
+    const distToEnd = getDistanceMeters(lat, lng, polyPoints[polyPoints.length - 1][0], polyPoints[polyPoints.length - 1][1]);
+    return distToStart <= distToEnd ? 'ketmoqda' : 'kelmoqda';
+  }
+
+  return fallbackIndex % 2 === 0 ? 'ketmoqda' : 'kelmoqda';
+}
+
 export default function MapComponent({ initialRouteId = null, onBackToRoutes }) {
   const mapContainerRef = useRef(null);
   const mapInstance = useRef(null);
@@ -65,6 +166,20 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
   const sheetRef = useRef(null);
   const lastFittedRouteId = useRef(null);
   const userHasMovedMap = useRef(false);
+
+  // Parse polyline points of selected route for direction calculation
+  const routePolyPoints = React.useMemo(() => {
+    if (!selectedRoute) return [];
+    if (Array.isArray(selectedRoute.polyline) && selectedRoute.polyline.length >= 2) {
+      return selectedRoute.polyline.map(p => [p[0], p[1]]);
+    }
+    if (Array.isArray(selectedRoute.stops)) {
+      return selectedRoute.stops
+        .filter(s => s && typeof s.lat === 'number' && typeof s.lng === 'number')
+        .map(s => [s.lat, s.lng]);
+    }
+    return [];
+  }, [selectedRoute]);
 
   // Measure bottom sheet dynamically to anchor controls smoothly above it
   useEffect(() => {
@@ -345,8 +460,11 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       const lng = Number(driver.longitude);
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
 
-      const isApproaching = dIdx % 2 === 0;
-      const busColor = isApproaching ? '#0066FF' : '#10B981';
+      const existingState = busMarkersRef.current[id];
+      const direction = determineDriverDirection(driver, existingState, routePolyPoints, dIdx);
+      const isKetmoqda = direction === 'ketmoqda';
+      const busColor = isKetmoqda ? '#0066FF' : '#10B981';
+      const dirText = isKetmoqda ? 'Ketmoqda' : 'Kelmoqda';
 
       let capText = "Bo'sh joy ko'p";
       let capColor = "#10B981";
@@ -362,7 +480,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         <div style="font-family: sans-serif; font-size: 13px; padding: 6px;">
           <strong>${driver.name} ${driver.surname || ''}</strong>
           <div style="color: #64748b; font-size: 12px; margin-top: 2px;">
-            ${driver.route_number || selectedRoute.number}-marshrut
+            ${driver.route_number || selectedRoute.number}-marshrut • <strong style="color: ${busColor};">${dirText}</strong>
           </div>
           <div style="color: ${capColor}; font-weight: 700; margin-top: 4px;">
             ${capText}
@@ -374,14 +492,38 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         // Marker already exists -> smoothly update position without re-creating DOM
         const existing = busMarkersRef.current[id];
         existing.marker.setLatLng([lat, lng]);
-        if (existing.capacity !== driver.capacity) {
+        if (existing.capacity !== driver.capacity || existing.direction !== direction) {
           existing.marker.setPopupContent(popupHtml);
           existing.capacity = driver.capacity;
+          if (existing.direction !== direction) {
+            existing.direction = direction;
+            existing.marker.setIcon(L.divIcon({
+              className: 'bus-marker-wrapper',
+              html: `
+                <div class="custom-bus-marker ${isKetmoqda ? 'going' : 'returning'}">
+                  <div class="bus-circle-icon" style="background: ${busColor}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M8 6v6"></path>
+                      <path d="M15 6v6"></path>
+                      <path d="M2 12h19.6"></path>
+                      <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"></path>
+                      <circle cx="7" cy="18" r="2"></circle>
+                      <circle cx="15" cy="18" r="2"></circle>
+                    </svg>
+                  </div>
+                </div>
+              `,
+              iconSize: [36, 36],
+              iconAnchor: [18, 18]
+            }));
+          }
         }
+        existing.prevLat = lat;
+        existing.prevLng = lng;
       } else {
         // Create new marker
         const busIconHtml = `
-          <div class="custom-bus-marker ${isApproaching ? 'approaching' : 'leaving'}">
+          <div class="custom-bus-marker ${isKetmoqda ? 'going' : 'returning'}">
             <div class="bus-circle-icon" style="background: ${busColor}">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M8 6v6"></path>
@@ -410,12 +552,15 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
 
         busMarkersRef.current[id] = {
           marker: busMarker,
-          capacity: driver.capacity
+          capacity: driver.capacity,
+          direction: direction,
+          prevLat: lat,
+          prevLng: lng
         };
       }
     });
 
-  }, [liveDrivers, selectedRoute]);
+  }, [liveDrivers, selectedRoute, routePolyPoints]);
 
   // Center map on user GPS location
   const handleLocateMe = () => {
@@ -570,14 +715,14 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
             <Bus size={14} color="#0066FF" />
             <span className="legend-arrow">➔</span>
           </div>
-          <span className="legend-label">Siz tomonga kelmoqda</span>
+          <span className="legend-label">Ketmoqda</span>
         </div>
         <div className="legend-row">
           <div className="legend-icon green">
             <Bus size={14} color="#10B981" />
             <span className="legend-arrow">➔</span>
           </div>
-          <span className="legend-label">Sizdan uzoqlashmoqda</span>
+          <span className="legend-label">Kelmoqda</span>
         </div>
       </div>
 
