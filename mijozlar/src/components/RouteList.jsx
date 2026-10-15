@@ -69,19 +69,16 @@ export default function RouteList({ onSelectRoute }) {
     );
   }
 
-  const activeRoute = routes.find(r => r.id === selectedRouteId) || routes[0];
+  const activeRoute = routes[0];
 
-  // Calculate detailed vehicle info and arrival ETA for all active drivers on this route
-  const activeRouteDrivers = activeRoute
-    ? liveDrivers.filter(d => String(d.route_id) === String(activeRoute.id))
-    : liveDrivers;
-
-  const stops = activeRoute && Array.isArray(activeRoute.stops) ? activeRoute.stops : [];
-
-  const processedVehicles = activeRouteDrivers.map(driver => {
+  // Calculate detailed vehicle info and arrival ETA for all active drivers
+  const processedVehicles = (liveDrivers || []).map(driver => {
     let currentStopName = "1-bekat (Bosh bekat)";
     let nextStopName = "";
     let etaMinutes = 3;
+
+    const driverRoute = routes.find(r => String(r.id) === String(driver.route_id)) || activeRoute;
+    const stops = driverRoute && Array.isArray(driverRoute.stops) ? driverRoute.stops : [];
 
     if (stops.length > 0 && driver.latitude && driver.longitude) {
       // Find closest stop
@@ -122,12 +119,12 @@ export default function RouteList({ onSelectRoute }) {
 
     return {
       driverId: driver.driver_id,
-      driverName: `${driver.name} ${driver.surname}`,
+      driverName: `${driver.name} ${driver.surname || ''}`,
       phone: driver.phone,
-      routeId: driver.route_id || activeRoute?.id,
-      routeNumber: driver.route_number || activeRoute?.number || "1",
-      routeName: driver.route_name || activeRoute?.name || "Marshrut",
-      routeColor: driver.route_color || activeRoute?.color || "#0066FF",
+      routeId: driver.route_id || driverRoute?.id,
+      routeNumber: driver.route_number || driverRoute?.number || "1",
+      routeName: driver.route_name || driverRoute?.name || "Marshrut",
+      routeColor: driver.route_color || driverRoute?.color || "#0066FF",
       latitude: driver.latitude,
       longitude: driver.longitude,
       speed: driver.speed || 0,
@@ -143,49 +140,6 @@ export default function RouteList({ onSelectRoute }) {
 
   return (
     <div className="vehicles-page-container">
-      {/* Route Switcher Tabs */}
-      {routes.length > 0 && (
-        <div className="route-switcher-bar">
-          {routes.map(r => {
-            const isSelected = r.id === activeRoute?.id;
-            const routeCount = liveDrivers.filter(d => String(d.route_id) === String(r.id)).length;
-            const rColor = r.color && r.color.startsWith('#') ? r.color : '#0066FF';
-
-            return (
-              <button
-                key={r.id}
-                className={`route-tab-pill ${isSelected ? 'active' : ''}`}
-                onClick={() => setSelectedRouteId(r.id)}
-              >
-                <span className="pill-num" style={{ backgroundColor: rColor }}>
-                  {r.number}
-                </span>
-                <span className="pill-name">{r.name}</span>
-                <span className={`pill-badge ${routeCount > 0 ? 'active' : ''}`}>
-                  {routeCount} ta
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Header Info Banner */}
-      <div className="vehicles-section-header">
-        <div>
-          <h2 className="section-title">
-            {activeRoute ? `${activeRoute.name} avtomobillari` : "Liniyadagi avtomobillar"}
-          </h2>
-          <p className="section-subtitle">
-            Eng tez yetib keladigan avtomobillar ketma-ketlikda
-          </p>
-        </div>
-        <div className="vehicles-count-chip">
-          <Bus size={15} />
-          <span>{processedVehicles.length} ta faol</span>
-        </div>
-      </div>
-
       {/* Vehicles List (Sorted by ETA ascending) */}
       {processedVehicles.length > 0 ? (
         <div className="vehicles-list-grid">
@@ -194,7 +148,7 @@ export default function RouteList({ onSelectRoute }) {
               key={vehicle.driverId || idx}
               rank={idx + 1}
               vehicle={vehicle}
-              routeColor={activeRoute?.color && activeRoute.color.startsWith('#') ? activeRoute.color : '#0066FF'}
+              routeColor={vehicle.routeColor}
               onSelectVehicle={(veh) => {
                 if (onSelectRoute) {
                   onSelectRoute(veh.routeId);

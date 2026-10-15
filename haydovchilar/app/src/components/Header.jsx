@@ -1,4 +1,3 @@
-import { Flag } from 'lucide-react'
 
 export default function Header({ assignedRoute }) {
   return (
@@ -10,10 +9,6 @@ export default function Header({ assignedRoute }) {
           {assignedRoute ? `${assignedRoute.number}-marshrut • Haydovchi` : "Haydovchi rejimi"}
         </div>
       </div>
-      <button className="btn-danger-light-small">
-        <Flag size={16} fill="currentColor" />
-        Oxirgi reys
-      </button>
     </div>
   )
 }

@@ -84,37 +84,49 @@ export default function LocationToggle({
       }
 
       setChecking(true);
+
+      const onPosSuccess = (position) => {
+        setChecking(false);
+        const driverLat = position.coords.latitude;
+        const driverLng = position.coords.longitude;
+
+        // If assigned route exists, verify 1 km distance rule
+        if (assignedRoute) {
+          const minDist = calculateMinDistanceToRoute(driverLat, driverLng, assignedRoute);
+          if (minDist > 1000) {
+            setDistanceError({
+              distanceKm: (minDist / 1000).toFixed(1),
+              routeName: assignedRoute.name || `${assignedRoute.number}-marshrut`,
+              driverCoords: { lat: driverLat, lng: driverLng }
+            });
+            return;
+          }
+        }
+
+        // Within 1 km or verified: activate location!
+        setDistanceError(null);
+        if (onLocationUpdate) {
+          onLocationUpdate(position);
+        }
+        setEnabled(true, position);
+      };
+
+      const onPosError = (error) => {
+        // Fallback to standard cellular/wifi accuracy if high accuracy GPS times out
+        navigator.geolocation.getCurrentPosition(
+          onPosSuccess,
+          (err2) => {
+            setChecking(false);
+            alert("Joylashuvni aniqlashda xatolik yuz berdi. Iltimos telefoningiz sozlamalarida GPS ni yoqing: " + (err2.message || error.message));
+          },
+          { enableHighAccuracy: false, timeout: 8000, maximumAge: 5000 }
+        );
+      };
+
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setChecking(false);
-          const driverLat = position.coords.latitude;
-          const driverLng = position.coords.longitude;
-
-          // If assigned route exists, verify 1 km distance rule
-          if (assignedRoute) {
-            const minDist = calculateMinDistanceToRoute(driverLat, driverLng, assignedRoute);
-            if (minDist > 1000) {
-              setDistanceError({
-                distanceKm: (minDist / 1000).toFixed(1),
-                routeName: assignedRoute.name || `${assignedRoute.number}-marshrut`,
-                driverCoords: { lat: driverLat, lng: driverLng }
-              });
-              return;
-            }
-          }
-
-          // Within 1 km or verified: activate location!
-          setDistanceError(null);
-          if (onLocationUpdate) {
-            onLocationUpdate(position);
-          }
-          setEnabled(true, position);
-        },
-        (error) => {
-          setChecking(false);
-          alert("Joylashuvni aniqlash uchun ruxsat bering: " + error.message);
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
+        onPosSuccess,
+        onPosError,
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 3000 }
       );
     } else {
       setEnabled(false);
@@ -157,7 +169,9 @@ export default function LocationToggle({
             disabled={checking}
             style={{ 
               backgroundColor: enabled ? 'var(--red)' : 'var(--blue-primary)',
-              opacity: checking ? 0.7 : 1
+              opacity: checking ? 0.7 : 1,
+              marginTop: '26px',
+              marginBottom: '12px'
             }}
           >
             <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />

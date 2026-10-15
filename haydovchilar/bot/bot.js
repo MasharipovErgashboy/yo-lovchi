@@ -158,6 +158,8 @@ bot.use(stage.middleware());
 function getDriverWebAppUrl(driver) {
   const url = new URL(WEB_APP_URL);
   if (driver) {
+    if (driver.id) url.searchParams.set('driver_id', driver.id);
+    if (driver.telegram_id) url.searchParams.set('telegram_id', driver.telegram_id);
     if (driver.phone) url.searchParams.set('phone', driver.phone);
     if (driver.name) url.searchParams.set('name', driver.name);
     if (driver.surname) url.searchParams.set('surname', driver.surname);

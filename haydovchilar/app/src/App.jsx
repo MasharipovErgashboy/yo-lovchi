@@ -74,15 +74,17 @@ function App() {
   // Real-time check if driver still exists in system & fetch assigned route
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const phone = params.get('phone');
-    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    const driverId = params.get('driver_id') || localStorage.getItem('yolovchi_driver_id');
+    const phone = params.get('phone') || localStorage.getItem('yolovchi_driver_phone');
+    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || params.get('telegram_id') || localStorage.getItem('yolovchi_driver_tg_id');
 
-    if (!phone && !tgUserId) return;
+    if (!phone && !tgUserId && !driverId) return;
 
     const checkStatus = async () => {
       try {
         let url = '/api/drivers/check?';
-        if (phone) url += `phone=${encodeURIComponent(phone)}`;
+        if (driverId) url += `driver_id=${driverId}`;
+        else if (phone) url += `phone=${encodeURIComponent(phone)}`;
         else if (tgUserId) url += `telegram_id=${tgUserId}`;
 
         const res = await fetch(url);
@@ -95,6 +97,11 @@ function App() {
           }, 2000);
         } else if (res.ok) {
           const data = await res.json();
+          if (data && data.driver) {
+            if (data.driver.id) localStorage.setItem('yolovchi_driver_id', data.driver.id);
+            if (data.driver.phone) localStorage.setItem('yolovchi_driver_phone', data.driver.phone);
+            if (data.driver.telegram_id) localStorage.setItem('yolovchi_driver_tg_id', data.driver.telegram_id);
+          }
           if (data && data.assigned_route) {
             setAssignedRoute(prev => {
               if (!prev) return data.assigned_route;
@@ -161,35 +168,51 @@ function App() {
     }).catch(err => console.error("Capacity change error:", err));
   };
 
+  const isOnlineRef = useRef(false);
+  const watchIdRef = useRef(null);
+
+  // Helper to get reliable driver identity from URL params or localStorage
+  const getDriverIdentity = () => {
+    const params = new URLSearchParams(window.location.search);
+    const driverId = params.get('driver_id') || localStorage.getItem('yolovchi_driver_id');
+    const phone = params.get('phone') || localStorage.getItem('yolovchi_driver_phone');
+    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || params.get('telegram_id') || localStorage.getItem('yolovchi_driver_tg_id');
+    return {
+      driver_id: driverId ? parseInt(driverId) : null,
+      phone: phone || null,
+      telegram_id: tgUserId ? parseInt(tgUserId) : null
+    };
+  };
+
   // Location Toggle Handler (with immediate online/offline GPS signal)
   const handleLocationToggle = (newEnabled, currentPos = null) => {
+    isOnlineRef.current = newEnabled;
     setLocationEnabled(newEnabled);
 
-    const params = new URLSearchParams(window.location.search);
-    const phone = params.get('phone');
-    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    const identity = getDriverIdentity();
 
     if (!newEnabled) {
-      // Driver turned off location -> notify backend immediately
+      // Driver turned off location -> clear watch and immediately notify backend
+      if (watchIdRef.current !== null && "geolocation" in navigator) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+
       fetch('/api/driver/offline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          telegram_id: tgUserId || null,
-          phone: phone || null
-        })
+        body: JSON.stringify(identity)
       }).catch(err => console.error("Offline error:", err));
     } else {
       // Driver turned on location -> notify backend immediately with current GPS
       const lat = currentPos?.coords?.latitude || driverLocation?.latitude;
       const lng = currentPos?.coords?.longitude || driverLocation?.longitude;
-      if (lat && lng && (phone || tgUserId)) {
+      if (lat && lng && (identity.driver_id || identity.phone || identity.telegram_id)) {
         fetch('/api/driver/location', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            telegram_id: tgUserId || null,
-            phone: phone || null,
+            ...identity,
             route_id: assignedRoute?.id || null,
             latitude: lat,
             longitude: lng,
@@ -206,11 +229,10 @@ function App() {
   useEffect(() => {
     if (!locationEnabled && subTab !== 'xarita' && !navToStartActive) return;
 
-    const params = new URLSearchParams(window.location.search);
-    const phone = params.get('phone');
-    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-
     const sendPosition = (position) => {
+      // If driver is not online and not viewing map, ignore
+      if (!isOnlineRef.current && subTab !== 'xarita' && !navToStartActive) return;
+
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
       const heading = position.coords.heading || 0.0;
@@ -224,46 +246,53 @@ function App() {
         return { latitude: lat, longitude: lng, heading, speed };
       });
 
-      // Transmit to backend API ONLY when driver has officially enabled location
-      if (locationEnabled && (phone || tgUserId)) {
-        const payload = {
-          telegram_id: tgUserId || null,
-          phone: phone || null,
-          route_id: assignedRoute?.id || null,
-          latitude: lat,
-          longitude: lng,
-          heading: heading,
-          speed: speed,
-          capacity: capacity
-        };
-
-        fetch('/api/driver/location', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }).catch(err => console.error("GPS send error:", err));
+      // Transmit to backend API ONLY when driver is strictly online
+      if (isOnlineRef.current) {
+        const identity = getDriverIdentity();
+        if (identity.driver_id || identity.phone || identity.telegram_id) {
+          fetch('/api/driver/location', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...identity,
+              route_id: assignedRoute?.id || null,
+              latitude: lat,
+              longitude: lng,
+              heading: heading,
+              speed: speed,
+              capacity: capacity
+            })
+          }).catch(err => console.error("GPS send error:", err));
+        }
       }
     };
 
-    let watchId = null;
     if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true });
-      watchId = navigator.geolocation.watchPosition(
+      navigator.geolocation.getCurrentPosition(
+        sendPosition,
+        () => {
+          navigator.geolocation.getCurrentPosition(sendPosition, () => {}, { enableHighAccuracy: false, timeout: 8000 });
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+
+      watchIdRef.current = navigator.geolocation.watchPosition(
         sendPosition,
         (err) => console.warn("Watch position error:", err),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 2000 }
       );
     }
 
     const interval = setInterval(() => {
-      if ("geolocation" in navigator && locationEnabled) {
+      if ("geolocation" in navigator && isOnlineRef.current) {
         navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true });
       }
     }, 2000);
 
     return () => {
-      if (watchId !== null && "geolocation" in navigator) {
-        navigator.geolocation.clearWatch(watchId);
+      if (watchIdRef.current !== null && "geolocation" in navigator) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
       }
       clearInterval(interval);
     };
