@@ -35,7 +35,8 @@ from database import (
     update_driver_capacity,
     get_live_drivers_for_route,
     get_all_live_drivers,
-    get_dashboard_stats
+    get_dashboard_stats,
+    record_driver_trip
 )
 from telegram_service import (
     send_approval_message,
@@ -597,6 +598,13 @@ def get_stats(response: Response):
     """Get real-time statistics for the admin dashboard."""
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return get_dashboard_stats()
+
+@app.post("/api/drivers/{driver_id}/record-trip")
+def add_driver_trip(driver_id: int):
+    """Manually or externally record a completed trip for a driver."""
+    trip = record_driver_trip(driver_id)
+    return {"success": True, "trip": trip}
+
 
 
 

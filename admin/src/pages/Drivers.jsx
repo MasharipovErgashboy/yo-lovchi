@@ -38,28 +38,79 @@ export default function Drivers() {
     }
   };
 
+  const formatShiftTime = (timeStr) => {
+    if (!timeStr) return null;
+    try {
+      const parts = timeStr.trim().split(' ');
+      if (parts.length > 1) {
+        return parts[1];
+      }
+      return timeStr;
+    } catch {
+      return timeStr;
+    }
+  };
+
   const fetchApproved = async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/drivers`);
       if (res.ok) {
         const apiDrivers = await res.json();
-        const formatted = (apiDrivers || []).map(d => ({
-          id: d.id,
-          telegram_id: d.telegram_id,
-          name: `${d.name} ${d.surname}`,
-          phone: d.phone,
-          status: 'Online',
-          assigned_route_id: d.assigned_route_id,
-          routeNumber: d.route_number,
-          routeName: d.route_name,
-          routeColor: d.route_color,
-          routeDisplay: d.route_number ? `${d.route_number}-marshrut` : 'Biriktirilmagan',
-          startTime: d.updated_at ? (d.updated_at.includes(' ') ? d.updated_at.split(' ')[1] : d.updated_at) : '08:00',
-          endTime: null,
-          tripsToday: 0,
-          tripsTotal: 0
-        }));
+        const formatted = (apiDrivers || []).map(d => {
+          const isOnline = Boolean(d.is_online);
+
+          // Real shift start time
+          let startTime = 'Boshlanmagan';
+          if (d.shift_started_at) {
+            startTime = formatShiftTime(d.shift_started_at);
+          }
+
+          // Real shift end time
+          let endTime = null;
+          if (isOnline) {
+            endTime = null; // Will show "Hozir ishda" (green)
+          } else if (d.shift_ended_at) {
+            endTime = formatShiftTime(d.shift_ended_at);
+          } else if (d.shift_started_at) {
+            endTime = 'Tugatilgan';
+          } else {
+            endTime = '-';
+          }
+
+          // Real route display
+          let routeDisplay = 'Biriktirilmagan';
+          if (d.route_number) {
+            routeDisplay = `${d.route_number}-marshrut` + (d.route_name ? ` (${d.route_name})` : '');
+          }
+
+          return {
+            id: d.id,
+            telegram_id: d.telegram_id,
+            name: `${d.name} ${d.surname}`,
+            phone: d.phone,
+            status: isOnline ? 'Online' : 'Offline',
+            assigned_route_id: d.assigned_route_id,
+            routeNumber: d.route_number,
+            routeName: d.route_name,
+            routeColor: d.route_color,
+            route: routeDisplay,
+            routeDisplay: routeDisplay,
+            startTime: startTime,
+            endTime: endTime,
+            tripsToday: d.trips_today ?? 0,
+            tripsTotal: d.trips_total ?? 0,
+            created_at: d.created_at,
+            updated_at: d.updated_at
+          };
+        });
         setDrivers(formatted);
+
+        // Keep open modal updated live with new coordinates/shift/trips
+        setSelectedDriver(prev => {
+          if (!prev) return null;
+          const found = formatted.find(item => item.id === prev.id);
+          return found || prev;
+        });
       }
     } catch (e) {
       console.error("Haydovchilarni yuklashda xatolik:", e);
@@ -325,7 +376,9 @@ export default function Drivers() {
                   <div style={{ color: 'var(--text-muted)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Route size={14} color="var(--primary)" /> Marshrut
                   </div>
-                  <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{selectedDriver.route}</div>
+                  <div style={{ fontSize: '15px', fontWeight: 'bold', lineHeight: '1.4', color: selectedDriver.routeNumber ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                    {selectedDriver.route || 'Biriktirilmagan'}
+                  </div>
                 </div>
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ color: 'var(--text-muted)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>

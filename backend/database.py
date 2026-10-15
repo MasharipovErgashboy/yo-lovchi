@@ -1,3 +1,4 @@
+import math
 import os
 import re
 import json
@@ -5,7 +6,7 @@ import hashlib
 import secrets
 import urllib.request
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Tuple
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -173,6 +174,48 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
+
+    # Ensure shift and terminal tracking columns exist in driver_locations
+    cursor.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'driver_locations' AND column_name = 'shift_started_at'
+            ) THEN
+                ALTER TABLE driver_locations ADD COLUMN shift_started_at TIMESTAMP;
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'driver_locations' AND column_name = 'shift_ended_at'
+            ) THEN
+                ALTER TABLE driver_locations ADD COLUMN shift_ended_at TIMESTAMP;
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'driver_locations' AND column_name = 'last_terminal'
+            ) THEN
+                ALTER TABLE driver_locations ADD COLUMN last_terminal VARCHAR(20);
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'driver_locations' AND column_name = 'last_terminal_time'
+            ) THEN
+                ALTER TABLE driver_locations ADD COLUMN last_terminal_time TIMESTAMP;
+            END IF;
+        END $$;
+    """)
+
+    # Driver completed trips (reyslar) table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS driver_trips (
+            id SERIAL PRIMARY KEY,
+            driver_id INTEGER REFERENCES candidates(id) ON DELETE CASCADE,
+            route_id INTEGER REFERENCES routes(id) ON DELETE SET NULL,
+            direction VARCHAR(20) DEFAULT 'forward',
+            completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
     conn.commit()
 
     # Seed initial routes if empty
@@ -254,21 +297,42 @@ def authenticate_user(username: str, password: str) -> Optional[Dict[str, Any]]:
         return user_dict
     return None
 
-def format_row(row: Dict[str, Any]) -> Dict[str, Any]:
+def format_row(row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not row:
+        return {}
     d = dict(row)
-    if isinstance(d.get("created_at"), datetime):
-        d["created_at"] = d["created_at"].strftime("%Y-%m-%d %H:%M:%S")
-    if isinstance(d.get("updated_at"), datetime):
-        d["updated_at"] = d["updated_at"].strftime("%Y-%m-%d %H:%M:%S")
+    for k, v in d.items():
+        if isinstance(v, (datetime, date)):
+            d[k] = v.strftime("%Y-%m-%d %H:%M:%S")
     return d
 
 def get_candidates(status: Optional[str] = None) -> List[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
     query = """
-        SELECT c.*, r.number as route_number, r.name as route_name, r.color as route_color
+        SELECT 
+            c.*, 
+            r.number as route_number, 
+            r.name as route_name, 
+            r.color as route_color,
+            r.direction as route_direction,
+            dl.is_online as dl_is_online,
+            dl.updated_at as location_updated_at,
+            dl.shift_started_at,
+            dl.shift_ended_at,
+            COALESCE(trips_stat.trips_today, 0) as trips_today,
+            COALESCE(trips_stat.trips_total, 0) as trips_total
         FROM candidates c
         LEFT JOIN routes r ON c.assigned_route_id = r.id
+        LEFT JOIN driver_locations dl ON c.id = dl.driver_id
+        LEFT JOIN (
+            SELECT 
+                driver_id,
+                COUNT(*) FILTER (WHERE completed_at >= CURRENT_DATE) as trips_today,
+                COUNT(*) as trips_total
+            FROM driver_trips
+            GROUP BY driver_id
+        ) trips_stat ON c.id = trips_stat.driver_id
     """
     if status:
         query += " WHERE c.status = %s ORDER BY c.id DESC;"
@@ -279,35 +343,132 @@ def get_candidates(status: Optional[str] = None) -> List[Dict[str, Any]]:
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
-    return [format_row(r) for r in rows]
+
+    formatted_rows = []
+    now = datetime.now()
+    for r in rows:
+        loc_updated = r.get("location_updated_at")
+        dl_online = r.get("dl_is_online")
+        is_online = False
+        if dl_online and loc_updated:
+            try:
+                if isinstance(loc_updated, datetime):
+                    diff = (now - loc_updated).total_seconds()
+                else:
+                    diff = 0
+                is_online = (diff < 600)
+            except Exception:
+                is_online = bool(dl_online)
+
+        d = format_row(r)
+        d["is_online"] = is_online
+        formatted_rows.append(d)
+        
+    return formatted_rows
 
 def get_candidate_by_id(candidate_id: int) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT c.*, r.number as route_number, r.name as route_name, r.color as route_color
+        SELECT 
+            c.*, 
+            r.number as route_number, 
+            r.name as route_name, 
+            r.color as route_color,
+            r.direction as route_direction,
+            dl.is_online as dl_is_online,
+            dl.updated_at as location_updated_at,
+            dl.shift_started_at,
+            dl.shift_ended_at,
+            COALESCE(trips_stat.trips_today, 0) as trips_today,
+            COALESCE(trips_stat.trips_total, 0) as trips_total
         FROM candidates c
         LEFT JOIN routes r ON c.assigned_route_id = r.id
+        LEFT JOIN driver_locations dl ON c.id = dl.driver_id
+        LEFT JOIN (
+            SELECT 
+                driver_id,
+                COUNT(*) FILTER (WHERE completed_at >= CURRENT_DATE) as trips_today,
+                COUNT(*) as trips_total
+            FROM driver_trips
+            GROUP BY driver_id
+        ) trips_stat ON c.id = trips_stat.driver_id
         WHERE c.id = %s;
     """, (candidate_id,))
     row = cursor.fetchone()
     cursor.close()
     conn.close()
-    return format_row(row) if row else None
+    if not row:
+        return None
+
+    loc_updated = row.get("location_updated_at")
+    dl_online = row.get("dl_is_online")
+    is_online = False
+    if dl_online and loc_updated:
+        try:
+            if isinstance(loc_updated, datetime):
+                diff = (datetime.now() - loc_updated).total_seconds()
+            else:
+                diff = 0
+            is_online = (diff < 600)
+        except Exception:
+            is_online = bool(dl_online)
+
+    d = format_row(row)
+    d["is_online"] = is_online
+    return d
 
 def get_candidate_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT c.*, r.number as route_number, r.name as route_name, r.color as route_color
+        SELECT 
+            c.*, 
+            r.number as route_number, 
+            r.name as route_name, 
+            r.color as route_color,
+            r.direction as route_direction,
+            dl.is_online as dl_is_online,
+            dl.updated_at as location_updated_at,
+            dl.shift_started_at,
+            dl.shift_ended_at,
+            COALESCE(trips_stat.trips_today, 0) as trips_today,
+            COALESCE(trips_stat.trips_total, 0) as trips_total
         FROM candidates c
         LEFT JOIN routes r ON c.assigned_route_id = r.id
+        LEFT JOIN driver_locations dl ON c.id = dl.driver_id
+        LEFT JOIN (
+            SELECT 
+                driver_id,
+                COUNT(*) FILTER (WHERE completed_at >= CURRENT_DATE) as trips_today,
+                COUNT(*) as trips_total
+            FROM driver_trips
+            GROUP BY driver_id
+        ) trips_stat ON c.id = trips_stat.driver_id
         WHERE c.telegram_id = %s;
     """, (telegram_id,))
     row = cursor.fetchone()
     cursor.close()
     conn.close()
-    return format_row(row) if row else None
+    if not row:
+        return None
+
+    loc_updated = row.get("location_updated_at")
+    dl_online = row.get("dl_is_online")
+    is_online = False
+    if dl_online and loc_updated:
+        try:
+            if isinstance(loc_updated, datetime):
+                diff = (datetime.now() - loc_updated).total_seconds()
+            else:
+                diff = 0
+            is_online = (diff < 600)
+        except Exception:
+            is_online = bool(dl_online)
+
+    d = format_row(row)
+    d["is_online"] = is_online
+    return d
 
 def save_candidate(telegram_id: int, name: str, surname: str, phone: str, pending_message_id: Optional[int] = None) -> Dict[str, Any]:
     conn = get_connection()
@@ -918,6 +1079,126 @@ def assign_driver_to_route(driver_id: int, route_id: Optional[int]) -> bool:
     conn.close()
     return bool(updated)
 
+def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Distance in meters between two lat/lng coordinates using Haversine formula."""
+    R = 6371000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0)**2
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    return R * c
+
+def check_and_record_trip(cursor, driver_id: int, route_id: Optional[int], lat: float, lng: float):
+    """Detect when a driver reaches start or end terminal of route and records completed trips."""
+    if not route_id or not lat or not lng:
+        return
+    
+    cursor.execute("SELECT stops, polyline FROM routes WHERE id = %s;", (route_id,))
+    route = cursor.fetchone()
+    if not route:
+        return
+
+    stops_data = route.get("stops")
+    polyline_data = route.get("polyline")
+    
+    start_pt = None
+    end_pt = None
+    
+    # 1. From polyline
+    if polyline_data:
+        try:
+            poly = json.loads(polyline_data) if isinstance(polyline_data, str) else polyline_data
+            if poly and len(poly) >= 2:
+                start_pt = (float(poly[0][0]), float(poly[0][1]))
+                end_pt = (float(poly[-1][0]), float(poly[-1][1]))
+        except Exception:
+            pass
+
+    # 2. From stops if polyline not parsed
+    if not start_pt and stops_data:
+        try:
+            stops = json.loads(stops_data) if isinstance(stops_data, str) else stops_data
+            if stops and len(stops) >= 2:
+                start_pt = (float(stops[0].get("lat")), float(stops[0].get("lng")))
+                end_pt = (float(stops[-1].get("lat")), float(stops[-1].get("lng")))
+        except Exception:
+            pass
+
+    if not start_pt or not end_pt:
+        return
+
+    dist_to_start = haversine_distance(lat, lng, start_pt[0], start_pt[1])
+    dist_to_end = haversine_distance(lat, lng, end_pt[0], end_pt[1])
+    threshold = 500.0  # 500 meters terminal radius
+
+    cursor.execute("SELECT last_terminal, last_terminal_time FROM driver_locations WHERE driver_id = %s;", (driver_id,))
+    loc_row = cursor.fetchone()
+    last_term = loc_row.get("last_terminal") if loc_row else None
+
+    # Near Start Terminal
+    if dist_to_start <= threshold:
+        if last_term == 'end':
+            # Driver arrived at start terminal from end terminal -> 1 trip completed!
+            cursor.execute("""
+                INSERT INTO driver_trips (driver_id, route_id, direction, completed_at)
+                VALUES (%s, %s, 'backward', CURRENT_TIMESTAMP);
+            """, (driver_id, route_id))
+            cursor.execute("""
+                UPDATE driver_locations 
+                SET last_terminal = 'start', last_terminal_time = CURRENT_TIMESTAMP
+                WHERE driver_id = %s;
+            """, (driver_id,))
+        elif last_term is None:
+            cursor.execute("""
+                UPDATE driver_locations 
+                SET last_terminal = 'start', last_terminal_time = CURRENT_TIMESTAMP
+                WHERE driver_id = %s;
+            """, (driver_id,))
+
+    # Near End Terminal
+    elif dist_to_end <= threshold:
+        if last_term == 'start':
+            # Driver arrived at end terminal from start terminal -> 1 trip completed!
+            cursor.execute("""
+                INSERT INTO driver_trips (driver_id, route_id, direction, completed_at)
+                VALUES (%s, %s, 'forward', CURRENT_TIMESTAMP);
+            """, (driver_id, route_id))
+            cursor.execute("""
+                UPDATE driver_locations 
+                SET last_terminal = 'end', last_terminal_time = CURRENT_TIMESTAMP
+                WHERE driver_id = %s;
+            """, (driver_id,))
+        elif last_term is None:
+            cursor.execute("""
+                UPDATE driver_locations 
+                SET last_terminal = 'end', last_terminal_time = CURRENT_TIMESTAMP
+                WHERE driver_id = %s;
+            """, (driver_id,))
+
+def record_driver_trip(driver_id: int, route_id: Optional[int] = None, direction: str = "forward") -> Dict[str, Any]:
+    """Manually or explicitly record a trip for a driver."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    target_route = route_id
+    if not target_route:
+        cursor.execute("SELECT assigned_route_id FROM candidates WHERE id = %s;", (driver_id,))
+        c = cursor.fetchone()
+        if c:
+            target_route = c.get("assigned_route_id")
+    
+    cursor.execute("""
+        INSERT INTO driver_trips (driver_id, route_id, direction, completed_at)
+        VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+        RETURNING *;
+    """, (driver_id, target_route, direction))
+    row = cursor.fetchone()
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return format_row(row)
+
 def update_driver_location(
     driver_id: int,
     latitude: float,
@@ -927,7 +1208,7 @@ def update_driver_location(
     capacity: str = "bosh",
     route_id: Optional[int] = None
 ) -> Dict[str, Any]:
-    """Upsert driver real-time GPS location."""
+    """Upsert driver real-time GPS location, update shift and detect completed route trips."""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -940,8 +1221,11 @@ def update_driver_location(
             target_route_id = cand.get("assigned_route_id")
 
     cursor.execute("""
-        INSERT INTO driver_locations (driver_id, route_id, latitude, longitude, heading, speed, capacity, is_online, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP)
+        INSERT INTO driver_locations (
+            driver_id, route_id, latitude, longitude, heading, speed, capacity,
+            is_online, shift_started_at, shift_ended_at, updated_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP)
         ON CONFLICT (driver_id) DO UPDATE
         SET route_id = COALESCE(EXCLUDED.route_id, driver_locations.route_id),
             latitude = EXCLUDED.latitude,
@@ -950,22 +1234,36 @@ def update_driver_location(
             speed = EXCLUDED.speed,
             capacity = EXCLUDED.capacity,
             is_online = true,
+            shift_started_at = CASE 
+                WHEN driver_locations.is_online = false OR driver_locations.shift_started_at IS NULL OR driver_locations.shift_ended_at IS NOT NULL 
+                THEN CURRENT_TIMESTAMP 
+                ELSE driver_locations.shift_started_at 
+            END,
+            shift_ended_at = NULL,
             updated_at = CURRENT_TIMESTAMP
         RETURNING *;
     """, (driver_id, target_route_id, latitude, longitude, heading, speed, capacity))
     row = cursor.fetchone()
+
+    try:
+        check_and_record_trip(cursor, driver_id, target_route_id, latitude, longitude)
+    except Exception as e:
+        logger.warning(f"Error checking trips for driver {driver_id}: {e}")
+
     conn.commit()
     cursor.close()
     conn.close()
     return format_row(row)
 
 def set_driver_offline(driver_id: int) -> bool:
-    """Mark driver offline in driver_locations."""
+    """Mark driver offline in driver_locations and set shift_ended_at."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE driver_locations 
-        SET is_online = false, updated_at = CURRENT_TIMESTAMP
+        SET is_online = false,
+            shift_ended_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
         WHERE driver_id = %s;
     """, (driver_id,))
     updated = cursor.rowcount
