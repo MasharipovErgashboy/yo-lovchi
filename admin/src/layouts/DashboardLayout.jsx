@@ -7,7 +7,6 @@ import {
   MapPin, 
   MessageSquare,
   LogOut,
-  Bell,
   Headphones
 } from 'lucide-react';
 import './DashboardLayout.css';
@@ -71,20 +70,6 @@ export default function DashboardLayout({ onLogout }) {
         <header className="topbar">
           <div className="topbar-title">
             <h1>{currentNav.label}</h1>
-          </div>
-          
-          <div className="topbar-actions">
-            <button className="icon-btn">
-              <Bell size={20} />
-              <span className="badge"></span>
-            </button>
-            <div className="user-profile">
-              <div className="avatar">A</div>
-              <div className="user-info">
-                <span className="user-name">Admin</span>
-                <span className="user-role">Superuser</span>
-              </div>
-            </div>
           </div>
         </header>
 
