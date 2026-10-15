@@ -12,9 +12,29 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
       (function() {
+        var hash = window.location.hash || '';
+        var search = window.location.search || '';
+        var isTgParam = hash.indexOf('tgWebAppData') !== -1 || 
+                        search.indexOf('tgWebAppData') !== -1 ||
+                        hash.indexOf('tgWebAppVersion') !== -1 ||
+                        search.indexOf('tgWebAppVersion') !== -1 ||
+                        hash.indexOf('tgWebAppPlatform') !== -1 ||
+                        search.indexOf('tgWebAppPlatform') !== -1;
+        var hasProxy = typeof window.TelegramWebviewProxy !== 'undefined';
+        var tg = window.Telegram && window.Telegram.WebApp;
+        var hasInitData = Boolean(tg && tg.initData && tg.initData.length > 0);
+        var isKnownPlatform = Boolean(tg && tg.platform && tg.platform !== 'unknown');
+
+        var isInsideTelegram = isTgParam || hasProxy || hasInitData || isKnownPlatform;
+
+        if (!isInsideTelegram) {
+          // If opened in a regular browser outside Telegram, redirect to Driver Telegram Bot
+          window.location.replace("https://t.me/Car404bot");
+          return;
+        }
+
         try {
-          if (window.Telegram && window.Telegram.WebApp) {
-            var tg = window.Telegram.WebApp;
+          if (tg) {
             tg.ready();
             tg.expand();
             if (tg.isVersionAtLeast && tg.isVersionAtLeast('8.0') && typeof tg.requestFullscreen === 'function') {
@@ -46,6 +66,9 @@
         } catch (e) {}
       })();
     </script>
+    <noscript>
+      <meta http-equiv="refresh" content="0;url=https://t.me/Car404bot" />
+    </noscript>
     <style>
       :root {
         --app-top-inset: max(
