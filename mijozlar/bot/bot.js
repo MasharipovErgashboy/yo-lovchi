@@ -9,7 +9,7 @@ const bot = new Telegraf('8910943568:AAHpGGEGLYm7KsB6df3AfOElAnN5TKBv5mo');
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://app.masharipov-ergashboy.uz';
 
 bot.start(async (ctx) => {
-  await ctx.setChatMenuButton({ type: 'default' }).catch(() => {});
+  await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});
 
   ctx.reply(
     "Assalomu alaykum! Yo'nalishli taksilar (marshrutkalar) harakatini jonli kuzatish uchun quyidagi tugmani bosing:",
@@ -31,7 +31,7 @@ bot.start(async (ctx) => {
 });
 
 bot.on('text', async (ctx) => {
-  await ctx.setChatMenuButton({ type: 'default' }).catch(() => {});
+  await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});
 
   ctx.reply(
     "Marshrutlarni ko'rish uchun quyidagi tugmani bosing:",
@@ -55,9 +55,10 @@ bot.on('text', async (ctx) => {
 bot.launch().then(async () => {
   console.log('Mijozlar boti ishga tushdi!');
   try {
+    await bot.telegram.deleteMyCommands().catch(() => {});
     await bot.telegram.setChatMenuButton({
       menuButton: {
-        type: 'default'
+        type: 'commands'
       }
     });
   } catch(e) {}

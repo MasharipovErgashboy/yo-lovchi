@@ -248,10 +248,16 @@ async def remove_driver(driver_id: int):
     return {"success": success, "deleted_id": driver_id}
 
 @app.get("/api/drivers/check")
-def check_driver_status(phone: Optional[str] = None, telegram_id: Optional[int] = None):
+def check_driver_status(
+    driver_id: Optional[int] = None,
+    phone: Optional[str] = None,
+    telegram_id: Optional[int] = None
+):
     """Check if driver is currently approved in the system and return full assigned route."""
     candidate = None
-    if telegram_id:
+    if driver_id:
+        candidate = get_candidate_by_id(driver_id)
+    elif telegram_id:
         candidate = get_candidate_by_telegram_id(telegram_id)
     elif phone:
         candidate = get_candidate_by_phone(phone)

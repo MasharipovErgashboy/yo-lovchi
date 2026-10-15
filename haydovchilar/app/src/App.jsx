@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { AlertTriangle, Navigation, MapPin } from 'lucide-react'
 import './App.css'
 import Header from './components/Header'
@@ -8,6 +8,13 @@ import BottomNav from './components/BottomNav'
 import Messages from './components/Messages'
 import Profile from './components/Profile'
 import DriverMap from './components/DriverMap'
+
+const safeGetStorage = (key) => {
+  try { return localStorage.getItem(key); } catch (e) { return null; }
+};
+const safeSetStorage = (key, val) => {
+  try { localStorage.setItem(key, val); } catch (e) {}
+};
 
 function App() {
   const [activeTab, setActiveTab] = useState('joylashuv') // 'joylashuv' | 'xabarlar' | 'profil'
@@ -74,9 +81,9 @@ function App() {
   // Real-time check if driver still exists in system & fetch assigned route
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const driverId = params.get('driver_id') || localStorage.getItem('yolovchi_driver_id');
-    const phone = params.get('phone') || localStorage.getItem('yolovchi_driver_phone');
-    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || params.get('telegram_id') || localStorage.getItem('yolovchi_driver_tg_id');
+    const driverId = params.get('driver_id') || safeGetStorage('yolovchi_driver_id');
+    const phone = params.get('phone') || safeGetStorage('yolovchi_driver_phone');
+    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || params.get('telegram_id') || safeGetStorage('yolovchi_driver_tg_id');
 
     if (!phone && !tgUserId && !driverId) return;
 
@@ -98,9 +105,9 @@ function App() {
         } else if (res.ok) {
           const data = await res.json();
           if (data && data.driver) {
-            if (data.driver.id) localStorage.setItem('yolovchi_driver_id', data.driver.id);
-            if (data.driver.phone) localStorage.setItem('yolovchi_driver_phone', data.driver.phone);
-            if (data.driver.telegram_id) localStorage.setItem('yolovchi_driver_tg_id', data.driver.telegram_id);
+            if (data.driver.id) safeSetStorage('yolovchi_driver_id', data.driver.id);
+            if (data.driver.phone) safeSetStorage('yolovchi_driver_phone', data.driver.phone);
+            if (data.driver.telegram_id) safeSetStorage('yolovchi_driver_tg_id', data.driver.telegram_id);
           }
           if (data && data.assigned_route) {
             setAssignedRoute(prev => {
@@ -174,9 +181,9 @@ function App() {
   // Helper to get reliable driver identity from URL params or localStorage
   const getDriverIdentity = () => {
     const params = new URLSearchParams(window.location.search);
-    const driverId = params.get('driver_id') || localStorage.getItem('yolovchi_driver_id');
-    const phone = params.get('phone') || localStorage.getItem('yolovchi_driver_phone');
-    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || params.get('telegram_id') || localStorage.getItem('yolovchi_driver_tg_id');
+    const driverId = params.get('driver_id') || safeGetStorage('yolovchi_driver_id');
+    const phone = params.get('phone') || safeGetStorage('yolovchi_driver_phone');
+    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || params.get('telegram_id') || safeGetStorage('yolovchi_driver_tg_id');
     return {
       driver_id: driverId ? parseInt(driverId) : null,
       phone: phone || null,
