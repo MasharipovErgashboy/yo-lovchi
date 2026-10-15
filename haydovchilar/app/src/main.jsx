@@ -33,6 +33,23 @@ class ErrorBoundary extends Component {
           <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '20px', lineHeight: '1.5' }}>
             Qayta urinib ko'rish uchun quyidagi tugmani bosing.
           </p>
+          {this.state.error && (
+            <div style={{
+              color: '#f87171',
+              fontSize: '12px',
+              textAlign: 'left',
+              background: '#1e293b',
+              padding: '12px',
+              borderRadius: '8px',
+              maxWidth: '90%',
+              overflowX: 'auto',
+              marginBottom: '16px',
+              wordBreak: 'break-word',
+              fontFamily: 'monospace'
+            }}>
+              {this.state.error.toString()}
+            </div>
+          )}
           <button 
             onClick={() => window.location.reload()} 
             style={{
