@@ -17,7 +17,13 @@ from database import (
     save_message,
     get_admin_messages,
     get_driver_messages,
+    get_passenger_messages,
+    delete_message,
     mark_message_as_read,
+    create_support_inquiry,
+    get_support_inquiries,
+    update_support_inquiry,
+    delete_support_inquiry,
     get_routes,
     get_route_by_id,
     create_route,
@@ -85,6 +91,19 @@ class MessageCreate(BaseModel):
     type: Optional[str] = "system"
     target_type: Optional[str] = "all"
     driver_id: Optional[int] = None
+    audience: Optional[str] = "drivers"  # "drivers" | "passengers"
+
+class SupportInquiryCreate(BaseModel):
+    sender_type: str = "driver"  # "driver" | "passenger"
+    sender_name: str
+    sender_phone: Optional[str] = None
+    telegram_id: Optional[int] = None
+    driver_id: Optional[int] = None
+    message: str
+
+class SupportInquiryUpdate(BaseModel):
+    status: Optional[str] = None
+    admin_reply: Optional[str] = None
 
 class RouteCreate(BaseModel):
     number: str
@@ -323,47 +342,94 @@ def set_offline(payload: DriverOfflineRequest):
     return {"success": success, "driver_id": target_driver["id"], "is_online": False}
 
 @app.get("/api/messages")
-def list_messages():
-    """Admin gets list of all messages sent."""
-    return get_admin_messages()
+def list_messages(audience: Optional[str] = None):
+    """Admin gets list of all messages sent, optionally filtered by audience ('drivers' | 'passengers')."""
+    return get_admin_messages(audience=audience)
 
 @app.post("/api/messages", status_code=status.HTTP_201_CREATED)
 async def create_message(payload: MessageCreate):
-    """Admin sends a message to all drivers or a specific driver."""
+    """Admin sends a message to all drivers, a specific driver, or passengers."""
+    audience = payload.audience or "drivers"
     msg = save_message(
         title=payload.title,
         message=payload.message,
         type=payload.type or "system",
-        target_type=payload.target_type or "all",
-        driver_id=payload.driver_id
+        target_type=payload.target_type or ("passengers" if audience == "passengers" else "all"),
+        driver_id=payload.driver_id,
+        audience=audience
     )
     
-    # Send real-time notification to Telegram Bot
-    if payload.target_type == "driver" and payload.driver_id:
-        driver = get_candidate_by_id(payload.driver_id)
-        if driver and driver.get("telegram_id"):
-            await send_driver_notification(
-                telegram_id=driver["telegram_id"],
-                title=payload.title,
-                message=payload.message,
-                msg_type=payload.type or "system"
-            )
-    elif payload.target_type == "all":
-        approved_drivers = get_candidates(status="approved")
-        for driver in approved_drivers:
-            tg_id = driver.get("telegram_id")
-            if tg_id:
-                try:
-                    await send_driver_notification(
-                        telegram_id=tg_id,
-                        title=payload.title,
-                        message=payload.message,
-                        msg_type=payload.type or "system"
-                    )
-                except Exception:
-                    pass
+    # If audience is drivers, send real-time notification to Telegram Bot
+    if audience == "drivers":
+        if payload.target_type == "driver" and payload.driver_id:
+            driver = get_candidate_by_id(payload.driver_id)
+            if driver and driver.get("telegram_id"):
+                await send_driver_notification(
+                    telegram_id=driver["telegram_id"],
+                    title=payload.title,
+                    message=payload.message,
+                    msg_type=payload.type or "system"
+                )
+        elif payload.target_type == "all":
+            approved_drivers = get_candidates(status="approved")
+            for driver in approved_drivers:
+                tg_id = driver.get("telegram_id")
+                if tg_id:
+                    try:
+                        await send_driver_notification(
+                            telegram_id=tg_id,
+                            title=payload.title,
+                            message=payload.message,
+                            msg_type=payload.type or "system"
+                        )
+                    except Exception:
+                        pass
 
     return msg
+
+@app.delete("/api/messages/{message_id}")
+def remove_message(message_id: int):
+    """Delete a message."""
+    delete_message(message_id)
+    return {"success": True}
+
+@app.get("/api/passenger-messages")
+def list_passenger_messages():
+    """Fetch system messages visible to passengers."""
+    return get_passenger_messages()
+
+# --- SUPPORT INQUIRY ENDPOINTS (Qo'llab-quvvatlash) ---
+
+@app.get("/api/support-inquiries")
+def list_support_inquiries(sender_type: Optional[str] = None):
+    """Admin lists all support inquiries (filtered by sender_type: 'driver' | 'passenger')."""
+    return get_support_inquiries(sender_type=sender_type)
+
+@app.post("/api/support-inquiries", status_code=status.HTTP_201_CREATED)
+def submit_support_inquiry(payload: SupportInquiryCreate):
+    """Driver or Passenger submits a support inquiry."""
+    return create_support_inquiry(
+        sender_type=payload.sender_type,
+        sender_name=payload.sender_name,
+        sender_phone=payload.sender_phone,
+        telegram_id=payload.telegram_id,
+        driver_id=payload.driver_id,
+        message=payload.message
+    )
+
+@app.patch("/api/support-inquiries/{inquiry_id}")
+def patch_support_inquiry(inquiry_id: int, payload: SupportInquiryUpdate):
+    """Admin updates inquiry status or sets admin reply."""
+    res = update_support_inquiry(inquiry_id, status=payload.status, admin_reply=payload.admin_reply)
+    if not res:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inquiry not found")
+    return res
+
+@app.delete("/api/support-inquiries/{inquiry_id}")
+def remove_support_inquiry(inquiry_id: int):
+    """Admin deletes an inquiry."""
+    delete_support_inquiry(inquiry_id)
+    return {"success": True}
 
 @app.get("/api/drivers/{driver_id}/messages")
 def get_messages_for_single_driver(driver_id: int):

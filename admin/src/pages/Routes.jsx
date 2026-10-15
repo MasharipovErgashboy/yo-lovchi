@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, RefreshCw, Navigation } from 'lucide-react';
+import { Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, Navigation } from 'lucide-react';
 import './PagesCommon.css';
 import './Routes.css';
 
@@ -179,17 +179,7 @@ export default function RoutesPage() {
   return (
     <div className="page-container">
       <div className="routes-header-actions">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <h2 style={{ fontSize: '24px', fontWeight: 600 }}>Barcha Marshrutlar</h2>
-          <button 
-            onClick={fetchRoutes} 
-            className="action-btn"
-            style={{ width: '32px', height: '32px', padding: 0 }}
-            title="Yangilash"
-          >
-            <RefreshCw size={14} />
-          </button>
-        </div>
+        <h2 style={{ fontSize: '24px', fontWeight: 600 }}>Barcha Marshrutlar</h2>
         <button className="btn-primary" onClick={openAddModal}>
           <Plus size={20} /> Yangi marshrut qo'shish
         </button>

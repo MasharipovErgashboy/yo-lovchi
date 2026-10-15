@@ -30,11 +30,40 @@ export default function Profile() {
     return { name: finalName, phone: finalPhone };
   }, []);
 
-  const handleSendMessage = () => {
-    if (!helpMessage.trim()) return;
-    // Here we would normally send to API. For now, simulate success
-    setMessageSent(true);
-    // Reset after some time if they close and reopen? Or just let them close it.
+  const [isSendingHelp, setIsSendingHelp] = useState(false);
+
+  const handleSendMessage = async () => {
+    if (!helpMessage.trim() || isSendingHelp) return;
+    setIsSendingHelp(true);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const driverId = params.get('driver_id') || localStorage.getItem('yolovchi_driver_id');
+      const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || params.get('telegram_id') || localStorage.getItem('yolovchi_driver_tg_id');
+      
+      const res = await fetch('/api/support-inquiries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender_type: 'driver',
+          sender_name: driverInfo.name,
+          sender_phone: driverInfo.phone,
+          telegram_id: tgUserId ? parseInt(tgUserId) : null,
+          driver_id: driverId ? parseInt(driverId) : null,
+          message: helpMessage.trim()
+        })
+      });
+
+      if (res.ok) {
+        setMessageSent(true);
+      } else {
+        alert("Xabar yuborishda xatolik yuz berdi. Qayta urinib ko'ring.");
+      }
+    } catch (e) {
+      console.error("Driver support error:", e);
+      alert("Internet aloqasini tekshiring!");
+    } finally {
+      setIsSendingHelp(false);
+    }
   };
 
   const closeHelpModal = () => {
@@ -151,9 +180,10 @@ export default function Profile() {
                 <button 
                   className="btn-primary w-full" 
                   onClick={handleSendMessage}
-                  style={{ opacity: helpMessage.trim() ? 1 : 0.6 }}
+                  disabled={isSendingHelp || !helpMessage.trim()}
+                  style={{ opacity: (!helpMessage.trim() || isSendingHelp) ? 0.6 : 1 }}
                 >
-                  <Send size={18} /> Xabarni yuborish
+                  <Send size={18} /> {isSendingHelp ? "Yuborilmoqda..." : "Xabarni yuborish"}
                 </button>
               </>
             )}

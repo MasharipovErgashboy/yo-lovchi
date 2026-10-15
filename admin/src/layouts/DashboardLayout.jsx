@@ -4,7 +4,6 @@ import {
   LayoutDashboard, 
   Users, 
   Car, 
-  Map as MapIcon, 
   MapPin, 
   MessageSquare,
   LogOut,
@@ -18,7 +17,6 @@ const navItems = [
   { path: '/candidates', label: 'Haydovchi nomzodlari', icon: <Users size={20} /> },
   { path: '/drivers', label: 'Haydovchilar', icon: <Car size={20} /> },
   { path: '/routes', label: 'Marshrutlar', icon: <MapPin size={20} /> },
-  { path: '/live-map', label: 'Jonli xarita', icon: <MapIcon size={20} /> },
   { path: '/messages', label: 'Xabarlar', icon: <MessageSquare size={20} /> },
   { path: '/support', label: 'Qo\'llab-quvvatlash', icon: <Headphones size={20} /> },
 ];

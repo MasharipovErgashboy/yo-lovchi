@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Eye, Check, X, Phone, User, Loader2, RefreshCw } from 'lucide-react';
+import { Eye, Check, X, Phone, User, Loader2 } from 'lucide-react';
 import './PagesCommon.css';
 
 const BACKEND_URL = "";
@@ -109,17 +109,7 @@ export default function Candidates() {
 
       <div className="glass-card full-height">
         <div className="card-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <h2>Haydovchi nomzodlari</h2>
-            <button 
-              onClick={fetchCandidates} 
-              className="action-btn"
-              style={{ width: '32px', height: '32px', padding: 0 }}
-              title="Yangilash"
-            >
-              <RefreshCw size={14} />
-            </button>
-          </div>
+          <h2>Haydovchi nomzodlari</h2>
           <span className="badge-count">
             {candidates.length} ta yangi ariza
           </span>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Activity, MapPin, X, Route, Clock, Car, Loader2, RefreshCw, Trash2, AlertTriangle, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
+import { User, Activity, MapPin, X, Route, Clock, Car, Loader2, Trash2, AlertTriangle, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
 import './PagesCommon.css';
 
 const BACKEND_URL = "";
@@ -172,17 +172,7 @@ export default function Drivers() {
     <div className="page-container">
       <div className="glass-card full-height">
         <div className="card-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <h2>Tasdiqlangan Haydovchilar</h2>
-            <button 
-              onClick={fetchApproved} 
-              className="action-btn"
-              style={{ width: '32px', height: '32px', padding: 0 }}
-              title="Yangilash"
-            >
-              <RefreshCw size={14} />
-            </button>
-          </div>
+          <h2>Tasdiqlangan Haydovchilar</h2>
           <span className="badge-count">{drivers.length} ta jami</span>
         </div>
 

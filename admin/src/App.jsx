@@ -6,7 +6,6 @@ import Dashboard from './pages/Dashboard';
 import Candidates from './pages/Candidates';
 import Drivers from './pages/Drivers';
 import RoutesPage from './pages/Routes';
-import LiveMap from './pages/LiveMap';
 import Messages from './pages/Messages';
 import Support from './pages/Support';
 
@@ -52,7 +51,6 @@ function App() {
           <Route path="candidates" element={<Candidates />} />
           <Route path="drivers" element={<Drivers />} />
           <Route path="routes" element={<RoutesPage />} />
-          <Route path="live-map" element={<LiveMap />} />
           <Route path="messages" element={<Messages />} />
           <Route path="support" element={<Support />} />
         </Route>

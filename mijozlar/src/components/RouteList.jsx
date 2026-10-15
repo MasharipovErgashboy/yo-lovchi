@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import VehicleCard from './VehicleCard';
-import { Loader2, Bus, AlertCircle, RefreshCw } from 'lucide-react';
+import { Loader2, Bus, AlertCircle } from 'lucide-react';
 
 // Distance calculation utility
 function getDistanceMeters(lat1, lon1, lat2, lon2) {

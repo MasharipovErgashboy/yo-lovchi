@@ -82,7 +82,39 @@ def init_db():
             title VARCHAR(255) NOT NULL,
             message TEXT NOT NULL,
             type VARCHAR(50) DEFAULT 'system',
+            audience VARCHAR(50) DEFAULT 'drivers',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
+    # Ensure audience column exists in messages if table was created previously
+    cursor.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'messages' AND column_name = 'audience'
+            ) THEN
+                ALTER TABLE messages ADD COLUMN audience VARCHAR(50) DEFAULT 'drivers';
+            END IF;
+        END $$;
+    """)
+
+    # Support inquiries table (for driver Help Center and passenger Contact)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS support_inquiries (
+            id SERIAL PRIMARY KEY,
+            sender_type VARCHAR(50) NOT NULL,
+            driver_id INTEGER REFERENCES candidates(id) ON DELETE SET NULL,
+            sender_name VARCHAR(255) NOT NULL,
+            sender_phone VARCHAR(50),
+            telegram_id BIGINT,
+            message TEXT NOT NULL,
+            status VARCHAR(50) DEFAULT 'new',
+            admin_reply TEXT,
+            replied_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
 
@@ -355,33 +387,40 @@ def save_message(
     type: str = "system",
     target_type: str = "all",
     driver_id: Optional[int] = None,
-    sender_type: str = "admin"
+    sender_type: str = "admin",
+    audience: str = "drivers"
 ) -> Dict[str, Any]:
     """Save an admin-sent message to the database."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO messages (title, message, type, target_type, driver_id, sender_type, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-        RETURNING id, title, message, type, target_type, driver_id, sender_type, created_at;
-    """, (title, message, type, target_type, driver_id, sender_type))
+        INSERT INTO messages (title, message, type, target_type, driver_id, sender_type, audience, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+        RETURNING id, title, message, type, target_type, driver_id, sender_type, audience, created_at;
+    """, (title, message, type, target_type, driver_id, sender_type, audience))
     row = cursor.fetchone()
     conn.commit()
     cursor.close()
     conn.close()
     return format_row(row)
 
-def get_admin_messages() -> List[Dict[str, Any]]:
-    """Get list of messages sent from Admin Panel."""
+def get_admin_messages(audience: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Get list of messages sent from Admin Panel, optionally filtered by audience."""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    query = """
         SELECT m.id, m.title, m.message, m.type, m.target_type, m.driver_id, m.sender_type, m.created_at,
+               COALESCE(m.audience, 'drivers') as audience,
                c.name as driver_name, c.surname as driver_surname, c.phone as driver_phone
         FROM messages m
         LEFT JOIN candidates c ON m.driver_id = c.id
-        ORDER BY m.created_at DESC;
-    """)
+    """
+    params = []
+    if audience:
+        query += " WHERE COALESCE(m.audience, 'drivers') = %s"
+        params.append(audience)
+    query += " ORDER BY m.created_at DESC;"
+    cursor.execute(query, tuple(params))
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -396,13 +435,38 @@ def get_driver_messages(driver_id: int) -> List[Dict[str, Any]]:
                CASE WHEN mr.id IS NOT NULL THEN true ELSE false END as is_read
         FROM messages m
         LEFT JOIN message_reads mr ON m.id = mr.message_id AND mr.driver_id = %s
-        WHERE m.target_type = 'all' OR m.driver_id = %s
+        WHERE (m.target_type = 'all' OR m.driver_id = %s) AND COALESCE(m.audience, 'drivers') = 'drivers'
         ORDER BY m.created_at DESC;
     """, (driver_id, driver_id))
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
     return [format_row(r) for r in rows]
+
+def get_passenger_messages() -> List[Dict[str, Any]]:
+    """Get all system messages published for passengers."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT m.id, m.title, m.message, m.type, m.created_at
+        FROM messages m
+        WHERE m.audience = 'passengers'
+        ORDER BY m.created_at DESC;
+    """)
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return [format_row(r) for r in rows]
+
+def delete_message(message_id: int) -> bool:
+    """Delete a message by ID."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM messages WHERE id = %s;", (message_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return True
 
 def mark_message_as_read(message_id: int, driver_id: int) -> bool:
     """Mark a message as read by a specific driver."""
@@ -413,6 +477,93 @@ def mark_message_as_read(message_id: int, driver_id: int) -> bool:
         VALUES (%s, %s, CURRENT_TIMESTAMP)
         ON CONFLICT (message_id, driver_id) DO NOTHING;
     """, (message_id, driver_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return True
+
+# --- SUPPORT INQUIRY FUNCTIONS (Qo'llab-quvvatlash) ---
+
+def create_support_inquiry(
+    sender_type: str,
+    sender_name: str,
+    sender_phone: Optional[str] = None,
+    telegram_id: Optional[int] = None,
+    driver_id: Optional[int] = None,
+    message: str = ""
+) -> Dict[str, Any]:
+    """Create a new support inquiry from driver or passenger."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO support_inquiries (sender_type, sender_name, sender_phone, telegram_id, driver_id, message, status, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, 'new', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING id, sender_type, sender_name, sender_phone, telegram_id, driver_id, message, status, admin_reply, replied_at, created_at, updated_at;
+    """, (sender_type, sender_name, sender_phone, telegram_id, driver_id, message))
+    row = cursor.fetchone()
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return format_row(row)
+
+def get_support_inquiries(sender_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all support inquiries, optionally filtered by sender_type ('driver' | 'passenger')."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    query = """
+        SELECT si.*,
+               c.name as profile_driver_name,
+               c.surname as profile_driver_surname,
+               c.phone as profile_driver_phone,
+               c.telegram_id as profile_driver_tg,
+               r.number as route_number,
+               r.name as route_name
+        FROM support_inquiries si
+        LEFT JOIN candidates c ON si.driver_id = c.id
+        LEFT JOIN routes r ON c.assigned_route_id = r.id
+    """
+    params = []
+    if sender_type:
+        query += " WHERE si.sender_type = %s"
+        params.append(sender_type)
+    query += " ORDER BY si.created_at DESC;"
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return [format_row(r) for r in rows]
+
+def update_support_inquiry(inquiry_id: int, status: Optional[str] = None, admin_reply: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Update status or set admin reply for a support inquiry."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    updates = ["updated_at = CURRENT_TIMESTAMP"]
+    params = []
+    if status:
+        updates.append("status = %s")
+        params.append(status)
+    if admin_reply is not None:
+        updates.append("admin_reply = %s")
+        params.append(admin_reply)
+        updates.append("replied_at = CURRENT_TIMESTAMP")
+    params.append(inquiry_id)
+    cursor.execute(f"""
+        UPDATE support_inquiries
+        SET {', '.join(updates)}
+        WHERE id = %s
+        RETURNING *;
+    """, tuple(params))
+    row = cursor.fetchone()
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return format_row(row) if row else None
+
+def delete_support_inquiry(inquiry_id: int) -> bool:
+    """Delete a support inquiry by ID."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM support_inquiries WHERE id = %s;", (inquiry_id,))
     conn.commit()
     cursor.close()
     conn.close()
