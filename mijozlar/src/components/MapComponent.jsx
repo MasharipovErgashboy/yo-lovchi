@@ -765,7 +765,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
                   </span>
                 )}
               </h3>
-              <p className="sheet-route-direction">{selectedRoute.direction || 'Andijon (Eski shahar) → Asaka'}</p>
+              <p className="sheet-route-direction">{selectedRoute.direction || ''}</p>
             </div>
 
             <div className="sheet-header-actions">

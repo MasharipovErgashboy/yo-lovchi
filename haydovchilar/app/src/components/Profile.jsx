@@ -30,6 +30,11 @@ export default function Profile() {
     return { name: finalName, phone: finalPhone };
   }, []);
 
+  const routeName = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('route') || localStorage.getItem('yolovchi_driver_route') || "Biriktirilmagan";
+  }, []);
+
   const [isSendingHelp, setIsSendingHelp] = useState(false);
 
   const handleSendMessage = async () => {
@@ -45,8 +50,8 @@ export default function Profile() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sender_type: 'driver',
-          sender_name: driverInfo.name,
-          sender_phone: driverInfo.phone,
+          sender_name: fullName,
+          sender_phone: phone,
           telegram_id: tgUserId ? parseInt(tgUserId) : null,
           driver_id: driverId ? parseInt(driverId) : null,
           message: helpMessage.trim()
@@ -107,8 +112,8 @@ export default function Profile() {
             </div>
             <div className="card-info">
               <span className="card-label">Marshrut</span>
-              <span className="card-title">12-marshrut</span>
-              <span className="card-desc">Toshkent &rarr; Chirchiq</span>
+              <span className="card-title">{routeName}</span>
+              <span className="card-desc">{routeName !== 'Biriktirilmagan' ? 'Faol marshrut' : "Admin tomonidan biriktiriladi"}</span>
             </div>
             <ChevronRight size={20} color="var(--text-secondary)" className="chevron" />
           </div>

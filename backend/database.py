@@ -218,54 +218,7 @@ def init_db():
     """)
     conn.commit()
 
-    # Seed initial routes if empty
-    cursor.execute("SELECT COUNT(*) as cnt FROM routes;")
-    res_cnt = cursor.fetchone()
-    if res_cnt and res_cnt.get("cnt", 0) == 0:
-        default_routes = [
-            {
-                "number": "12",
-                "name": "12-marshrut",
-                "direction": "Andijon (Eski shahar) → Asaka",
-                "color": "var(--route-blue)",
-                "price": "3 000 so'm",
-                "stops": json.dumps([
-                    {"name": "Eski shahar (Bosh bekat)", "raw": "40.7821, 72.3442", "lat": 40.7821, "lng": 72.3442},
-                    {"name": "Navoiy shoh ko'chasi", "raw": "40.7650, 72.3550", "lat": 40.7650, "lng": 72.3550},
-                    {"name": "Viloyat shifoxonasi", "raw": "40.7420, 72.3680", "lat": 40.7420, "lng": 72.3680},
-                    {"name": "Asaka avtoshoxbekat", "raw": "40.6415, 72.2389", "lat": 40.6415, "lng": 72.2389}
-                ]),
-                "polyline": json.dumps([
-                    [40.7821, 72.3442],
-                    [40.7650, 72.3550],
-                    [40.7420, 72.3680],
-                    [40.6415, 72.2389]
-                ])
-            },
-            {
-                "number": "15",
-                "name": "15-marshrut",
-                "direction": "Andijon vokzal → Oltinko'l",
-                "color": "var(--route-green)",
-                "price": "2 500 so'm",
-                "stops": json.dumps([
-                    {"name": "Andijon Temiryo'l Vokzali", "raw": "40.7950, 72.3620", "lat": 40.7950, "lng": 72.3620},
-                    {"name": "Yangi bozor", "raw": "40.7780, 72.3410", "lat": 40.7780, "lng": 72.3410},
-                    {"name": "Oltinko'l markaz", "raw": "40.8010, 72.1850", "lat": 40.8010, "lng": 72.1850}
-                ]),
-                "polyline": json.dumps([
-                    [40.7950, 72.3620],
-                    [40.7780, 72.3410],
-                    [40.8010, 72.1850]
-                ])
-            }
-        ]
-        for r in default_routes:
-            cursor.execute("""
-                INSERT INTO routes (number, name, direction, color, price, stops, polyline)
-                VALUES (%s, %s, %s, %s, %s, %s, %s);
-            """, (r["number"], r["name"], r["direction"], r["color"], r["price"], r["stops"], r["polyline"]))
-        conn.commit()
+
 
     # Seed superuser (yolovchi / yolovchi)
     cursor.execute("SELECT id FROM users WHERE username = %s;", ('yolovchi',))
