@@ -58,7 +58,7 @@ export default function Support() {
     const name = (item.sender_name || '').toLowerCase();
     const phone = (item.sender_phone || '').toLowerCase();
     const msg = (item.message || '').toLowerCase();
-    const pName = `${item.profile_driver_name || ''} ${item.profile_driver_surname || ''}`.toLowerCase();
+    const pName = `${item.profile_driver_name || ''} ${item.profile_driver_car_number || item.profile_driver_surname || ''}`.toLowerCase();
     const rNum = (item.route_number || '').toLowerCase();
     return name.includes(q) || phone.includes(q) || msg.includes(q) || pName.includes(q) || rNum.includes(q);
   });
@@ -238,7 +238,7 @@ export default function Support() {
             filteredInquiries.map(item => {
               const isDriver = item.sender_type === 'driver';
               const displayName = isDriver 
-                ? (item.profile_driver_name ? `${item.profile_driver_name} ${item.profile_driver_surname || ''}` : item.sender_name || 'Haydovchi')
+                ? (item.profile_driver_name ? `${item.profile_driver_name} ${item.profile_driver_car_number ? `(${item.profile_driver_car_number})` : ''}` : item.sender_name || 'Haydovchi')
                 : (item.sender_name || "Yo'lovchi");
 
               return (
@@ -288,7 +288,7 @@ export default function Support() {
                   <h3 style={{ margin: '0 0 4px 0', fontSize: '17px', fontWeight: 600 }}>
                     {selectedInquiry.sender_type === 'driver' 
                       ? (selectedInquiry.profile_driver_name 
-                          ? `${selectedInquiry.profile_driver_name} ${selectedInquiry.profile_driver_surname || ''}` 
+                          ? `${selectedInquiry.profile_driver_name} ${selectedInquiry.profile_driver_car_number ? `(${selectedInquiry.profile_driver_car_number})` : ''}` 
                           : selectedInquiry.sender_name || 'Haydovchi')
                       : (selectedInquiry.sender_name || "Yo'lovchi")}
                   </h3>
@@ -338,7 +338,7 @@ export default function Support() {
                   <span className="profile-meta-label">Profil egasi:</span>
                   <span className="profile-meta-value">
                     {selectedInquiry.profile_driver_name 
-                      ? `${selectedInquiry.profile_driver_name} ${selectedInquiry.profile_driver_surname || ''}`
+                      ? `${selectedInquiry.profile_driver_name} ${selectedInquiry.profile_driver_car_number ? `(${selectedInquiry.profile_driver_car_number})` : ''}`
                       : selectedInquiry.sender_name || 'Aniqlanmagan'}
                   </span>
                   {selectedInquiry.driver_id && (

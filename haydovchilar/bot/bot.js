@@ -30,16 +30,16 @@ const registrationWizard = new Scenes.WizardScene(
     return ctx.wizard.next();
   },
   
-  // Step 2: Ask Surname
+  // Step 2: Ask Car Number
   async (ctx) => {
     if (!ctx.message || !ctx.message.text) return;
-    ctx.wizard.state.name = ctx.message.text;
+    ctx.wizard.state.name = ctx.message.text.trim();
     
     // Delete user's reply and previous prompt
     await safeDelete(ctx, ctx.message.message_id);
     await safeDelete(ctx, ctx.wizard.state.lastPromptId);
     
-    const promptMsg = await ctx.reply("Familiyangizni kiriting:");
+    const promptMsg = await ctx.reply("Avtomobil raqamingizni kiriting (masalan: 60 A 123 AA):");
     ctx.wizard.state.lastPromptId = promptMsg.message_id;
     return ctx.wizard.next();
   },
@@ -47,7 +47,9 @@ const registrationWizard = new Scenes.WizardScene(
   // Step 3: Ask Phone
   async (ctx) => {
     if (!ctx.message || !ctx.message.text) return;
-    ctx.wizard.state.surname = ctx.message.text;
+    const carNumber = ctx.message.text.trim().toUpperCase();
+    ctx.wizard.state.car_number = carNumber;
+    ctx.wizard.state.surname = carNumber;
     
     // Delete user's reply and previous prompt
     await safeDelete(ctx, ctx.message.message_id);
@@ -79,7 +81,8 @@ const registrationWizard = new Scenes.WizardScene(
     await safeDelete(ctx, ctx.message.message_id);
     await safeDelete(ctx, ctx.wizard.state.lastPromptId);
 
-    const { name, surname, phone } = ctx.wizard.state;
+    const { name, car_number, surname, phone } = ctx.wizard.state;
+    const carNum = car_number || surname;
     
     // Telefon raqamni chiroyli formatlash (+998 90 123 45 67)
     let formattedPhone = phone.toString().replace(/[^0-9]/g, '');
@@ -94,7 +97,7 @@ const registrationWizard = new Scenes.WizardScene(
     }
     ctx.wizard.state.phone = formattedPhone;
 
-    const msg = `Ma'lumotlaringiz:\n\nIsm: ${name}\nFamiliya: ${surname}\nTelefon: ${formattedPhone}`;
+    const msg = `Ma'lumotlaringiz:\n\nIsm: ${name}\nAvtomobil raqami: ${carNum}\nTelefon: ${formattedPhone}`;
 
     // Remove the contact keyboard, send inline keyboard
     const promptMsg = await ctx.reply(msg, {
@@ -115,7 +118,8 @@ const registrationWizard = new Scenes.WizardScene(
     if (!ctx.callbackQuery) return;
     
     if (ctx.callbackQuery.data === 'confirm') {
-      const { name, surname, phone } = ctx.wizard.state;
+      const { name, car_number, surname, phone } = ctx.wizard.state;
+      const carNum = car_number || surname;
       
       // Update message to pending
       const pendingMsg = await ctx.editMessageText("Arizangiz yuborildi.\n\nAdmin tasdiqlashini kuting.");
@@ -132,7 +136,8 @@ const registrationWizard = new Scenes.WizardScene(
           body: JSON.stringify({
             telegram_id: ctx.from.id,
             name: name,
-            surname: surname,
+            surname: carNum,
+            car_number: carNum,
             phone: phone,
             pending_message_id: pendingId
           })
@@ -162,6 +167,7 @@ function getDriverWebAppUrl(driver) {
     if (driver.telegram_id) url.searchParams.set('telegram_id', driver.telegram_id);
     if (driver.phone) url.searchParams.set('phone', driver.phone);
     if (driver.name) url.searchParams.set('name', driver.name);
+    if (driver.car_number || driver.surname) url.searchParams.set('car_number', driver.car_number || driver.surname);
     if (driver.surname) url.searchParams.set('surname', driver.surname);
   }
   return url.toString();

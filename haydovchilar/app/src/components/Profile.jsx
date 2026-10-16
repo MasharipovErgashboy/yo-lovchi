@@ -6,11 +6,11 @@ export default function Profile() {
   const [helpMessage, setHelpMessage] = useState('');
   const [messageSent, setMessageSent] = useState(false);
 
-  const { name: fullName, phone } = useMemo(() => {
+  const { name: driverName, carNumber, phone } = useMemo(() => {
     // 1. Try URL parameters first (passed by our bot)
     const params = new URLSearchParams(window.location.search);
     const urlName = params.get('name');
-    const urlSurname = params.get('surname') || '';
+    const urlCarNumber = params.get('car_number') || params.get('surname') || localStorage.getItem('yolovchi_driver_car_number') || '';
     const urlPhone = params.get('phone');
     
     // 2. Fallback to Telegram user info or mock
@@ -18,16 +18,16 @@ export default function Profile() {
     
     let finalName = '';
     if (urlName) {
-      finalName = `${urlName} ${urlSurname}`.trim();
+      finalName = urlName.trim();
     } else if (tgUser && tgUser.first_name) {
-      finalName = `${tgUser.first_name} ${tgUser.last_name || ''}`.trim();
+      finalName = tgUser.first_name.trim();
     } else {
-      finalName = "Ergashbek Karimov";
+      finalName = "Ergashbek";
     }
 
     const finalPhone = urlPhone || "+998 90 123 45 67";
     
-    return { name: finalName, phone: finalPhone };
+    return { name: finalName, carNumber: urlCarNumber, phone: finalPhone };
   }, []);
 
   const routeName = useMemo(() => {
@@ -50,7 +50,7 @@ export default function Profile() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sender_type: 'driver',
-          sender_name: fullName,
+          sender_name: carNumber ? `${driverName} (${carNumber})` : driverName,
           sender_phone: phone,
           telegram_id: tgUserId ? parseInt(tgUserId) : null,
           driver_id: driverId ? parseInt(driverId) : null,
@@ -100,7 +100,12 @@ export default function Profile() {
               <div className="online-dot"></div>
             </div>
             <div className="user-details">
-              <div className="user-name">{fullName}</div>
+              <div className="user-name">{driverName}</div>
+              {carNumber && (
+                <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--blue-primary)', marginTop: '2px' }}>
+                  🚗 {carNumber}
+                </div>
+              )}
               <div className="user-phone">{phone}</div>
             </div>
           </div>

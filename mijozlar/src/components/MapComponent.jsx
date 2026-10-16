@@ -478,7 +478,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
 
       const popupHtml = `
         <div style="font-family: sans-serif; font-size: 13px; padding: 6px;">
-          <strong>${driver.name} ${driver.surname || ''}</strong>
+          <strong>${driver.name} ${driver.car_number ? `(${driver.car_number})` : (driver.surname || '')}</strong>
           <div style="color: #64748b; font-size: 12px; margin-top: 2px;">
             ${driver.route_number || selectedRoute.number}-marshrut • <strong style="color: ${busColor};">${dirText}</strong>
           </div>

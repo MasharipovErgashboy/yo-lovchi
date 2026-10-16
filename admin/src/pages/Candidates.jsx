@@ -119,7 +119,8 @@ export default function Candidates() {
           <table className="custom-table">
             <thead>
               <tr>
-                <th>F.I.O</th>
+                <th>Ism</th>
+                <th>Avtomobil raqami</th>
                 <th>Telefon raqam</th>
                 <th>Status</th>
                 <th>Sana</th>
@@ -129,7 +130,7 @@ export default function Candidates() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                       <Loader2 className="animate-spin" size={18} /> Yuklanmoqda...
                     </div>
@@ -137,7 +138,7 @@ export default function Candidates() {
                 </tr>
               ) : candidates.length === 0 ? (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
                     <User size={36} style={{ margin: '0 auto 12px', opacity: 0.3, display: 'block' }} />
                     Hozircha yangi arizalar kelib tushmagan.
                   </td>
@@ -148,8 +149,20 @@ export default function Candidates() {
                     <td>
                       <div className="td-user">
                         <div className="td-avatar"><User size={16} /></div>
-                        {cand.name} {cand.surname}
+                        {cand.name}
                       </div>
+                    </td>
+                    <td>
+                      <span style={{ 
+                        fontWeight: '700', 
+                        fontFamily: 'monospace', 
+                        background: 'rgba(255,255,255,0.08)', 
+                        padding: '4px 8px', 
+                        borderRadius: '6px', 
+                        border: '1px solid rgba(255,255,255,0.12)' 
+                      }}>
+                        {cand.car_number || cand.surname || '—'}
+                      </span>
                     </td>
                     <td>{cand.phone}</td>
                     <td>
@@ -192,8 +205,11 @@ export default function Candidates() {
             <div className="modal-body">
               <div className="cand-profile">
                 <div className="cand-avatar large"><User size={40} /></div>
-                <h2>{selectedCandidate.name} {selectedCandidate.surname}</h2>
-                <div className="cand-phone">
+                <h2>{selectedCandidate.name}</h2>
+                <div style={{ marginTop: '6px', fontSize: '15px', fontWeight: '700', color: 'var(--primary, #3b82f6)' }}>
+                  🚗 Avtomobil raqami: {selectedCandidate.car_number || selectedCandidate.surname || '—'}
+                </div>
+                <div className="cand-phone" style={{ marginTop: '8px' }}>
                   <Phone size={16} /> {selectedCandidate.phone}
                 </div>
                 <div style={{ marginTop: '12px', fontSize: '13px', color: 'var(--text-muted)' }}>

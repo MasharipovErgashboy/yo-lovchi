@@ -86,7 +86,8 @@ export default function Drivers() {
           return {
             id: d.id,
             telegram_id: d.telegram_id,
-            name: `${d.name} ${d.surname}`,
+            name: d.name,
+            car_number: d.car_number || d.surname || '',
             phone: d.phone,
             status: isOnline ? 'Online' : 'Offline',
             assigned_route_id: d.assigned_route_id,
@@ -231,7 +232,8 @@ export default function Drivers() {
           <table className="custom-table">
             <thead>
               <tr>
-                <th>F.I.O</th>
+                <th>Ism</th>
+                <th>Avtomobil raqami</th>
                 <th>Telefon raqam</th>
                 <th>Holat</th>
                 <th>Biriktirilgan Marshrut</th>
@@ -241,7 +243,7 @@ export default function Drivers() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                       <Loader2 className="animate-spin" size={18} /> Yuklanmoqda...
                     </div>
@@ -249,7 +251,7 @@ export default function Drivers() {
                 </tr>
               ) : drivers.length === 0 ? (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
                     <Car size={36} style={{ margin: '0 auto 12px', opacity: 0.3, display: 'block' }} />
                     Hozircha tasdiqlangan haydovchilar mavjud emas.
                   </td>
@@ -262,6 +264,18 @@ export default function Drivers() {
                         <div className="td-avatar"><User size={16} /></div>
                         {driver.name}
                       </div>
+                    </td>
+                    <td>
+                      <span style={{ 
+                        fontWeight: '700', 
+                        fontFamily: 'monospace', 
+                        background: 'rgba(255,255,255,0.08)', 
+                        padding: '4px 8px', 
+                        borderRadius: '6px', 
+                        border: '1px solid rgba(255,255,255,0.12)' 
+                      }}>
+                        {driver.car_number || '—'}
+                      </span>
                     </td>
                     <td>{driver.phone}</td>
                     <td>
@@ -354,6 +368,9 @@ export default function Drivers() {
                   <User size={40} />
                 </div>
                 <h2>{selectedDriver.name}</h2>
+                <div style={{ fontSize: '15px', fontWeight: '700', color: 'var(--primary, #3b82f6)', marginTop: '4px', marginBottom: '8px' }}>
+                  🚗 Avtomobil raqami: {selectedDriver.car_number || '—'}
+                </div>
                 <div className="cand-phone" style={{ marginBottom: '16px' }}>
                   {selectedDriver.phone}
                 </div>
@@ -413,7 +430,7 @@ export default function Drivers() {
             </div>
             <div className="modal-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <p style={{ color: 'var(--text-main)', fontSize: '15px', lineHeight: '1.6', margin: 0 }}>
-                Haqiqatan ham <strong>{driverToDelete.name}</strong> ({driverToDelete.phone})ni tizimdan o'chirmoqchimisiz?
+                Haqiqatan ham <strong>{driverToDelete.name}</strong> {driverToDelete.car_number ? `(${driverToDelete.car_number})` : ''} ({driverToDelete.phone})ni tizimdan o'chirmoqchimisiz?
               </p>
               <div style={{ background: 'rgba(239, 68, 68, 0.08)', padding: '12px 16px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#f87171', fontSize: '13px', lineHeight: '1.5' }}>
                 ⚠️ Haydovchi mini ilovadan avtomatik chiqariladi, Telegram botidagi "Ilovani ochish" tugmasi olib tashlanadi va bot boshlang'ich ro'yxatdan o'tish holatiga qaytariladi.
@@ -455,7 +472,7 @@ export default function Drivers() {
                   <MessageSquare size={20} /> Xabar yuborish
                 </h3>
                 <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  {driverToMessage.name} • {driverToMessage.phone}
+                  {driverToMessage.name} {driverToMessage.car_number ? `(${driverToMessage.car_number})` : ''} • {driverToMessage.phone}
                 </div>
               </div>
               <button className="close-btn" onClick={() => !isSendingMsg && setDriverToMessage(null)}>

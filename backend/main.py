@@ -37,7 +37,8 @@ from database import (
     get_all_live_drivers,
     get_dashboard_stats,
     record_driver_trip,
-    calculate_distance_to_route_polyline
+    calculate_distance_to_route_polyline,
+    get_driver_location
 )
 from telegram_service import (
     send_approval_message,
@@ -73,7 +74,8 @@ class LoginRequest(BaseModel):
 class CandidateCreate(BaseModel):
     telegram_id: int
     name: str
-    surname: str
+    surname: Optional[str] = ""
+    car_number: Optional[str] = None
     phone: str
     pending_message_id: Optional[int] = None
 
@@ -81,7 +83,8 @@ class CandidateResponse(BaseModel):
     id: int
     telegram_id: int
     name: str
-    surname: str
+    surname: Optional[str] = ""
+    car_number: Optional[str] = None
     phone: str
     status: str
     pending_message_id: Optional[int] = None
@@ -192,11 +195,12 @@ def register_candidate(payload: CandidateCreate):
     candidate = save_candidate(
         telegram_id=payload.telegram_id,
         name=payload.name,
-        surname=payload.surname,
+        surname=payload.surname or payload.car_number or "",
         phone=payload.phone,
-        pending_message_id=payload.pending_message_id
+        pending_message_id=payload.pending_message_id,
+        car_number=payload.car_number
     )
-    logger.info(f"Candidate registered: {candidate['name']} {candidate['surname']} ({candidate['phone']})")
+    logger.info(f"Candidate registered: {candidate['name']} ({candidate.get('car_number', '')}) ({candidate['phone']})")
     return candidate
 
 @app.post("/api/candidates/{candidate_id}/approve")
@@ -212,7 +216,8 @@ async def approve_candidate(candidate_id: int):
     notified = await send_approval_message(
         telegram_id=candidate["telegram_id"],
         name=candidate["name"],
-        surname=candidate["surname"],
+        surname=candidate.get("surname", ""),
+        car_number=candidate.get("car_number", ""),
         phone=candidate["phone"],
         driver_id=candidate_id,
         pending_message_id=candidate.get("pending_message_id")
@@ -580,52 +585,68 @@ async def update_location(payload: DriverLocationUpdate):
     driver_id = target_driver["id"]
     target_route_id = payload.route_id or target_driver.get("assigned_route_id")
 
+    # Check if driver was already actively working on the route
+    current_loc = get_driver_location(driver_id)
+    was_active_on_work = bool(current_loc and current_loc.get("is_online") and current_loc.get("active_on_route"))
+
     # Check 1 km distance deviation from assigned route
     if target_route_id and payload.latitude and payload.longitude:
         dist_meters = calculate_distance_to_route_polyline(payload.latitude, payload.longitude, target_route_id)
         if dist_meters is not None and dist_meters > 1000.0:
-            # 1. Turn driver offline immediately in DB (removes vehicle from passenger app)
-            set_driver_offline(driver_id)
+            if was_active_on_work:
+                # 1. Turn driver offline immediately in DB (removes vehicle from passenger app)
+                set_driver_offline(driver_id)
 
-            warning_title = "Marshrutdan chetlanish"
-            warning_msg = (
-                "Siz belgilangan marshrut chizig'idan 1 km dan ortiq uzoqlashdingiz. "
-                "Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing."
-            )
-
-            # 2. Save personal message to driver's Mini App messages
-            try:
-                save_message(
-                    title=warning_title,
-                    message=warning_msg,
-                    type="alert",
-                    target_type="driver",
-                    driver_id=driver_id,
-                    audience="drivers"
+                warning_title = "Marshrutdan chetlanish"
+                warning_msg = (
+                    "Siz belgilangan marshrut chizig'idan 1 km dan ortiq uzoqlashdingiz. "
+                    "Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing."
                 )
-            except Exception as e:
-                logger.error(f"Error saving deviation message: {e}")
 
-            # 3. Send warning notification to driver's Telegram Bot
-            tg_id = target_driver.get("telegram_id")
-            if tg_id:
+                # 2. Save personal message to driver's Mini App messages
                 try:
-                    await send_driver_notification(
-                        telegram_id=tg_id,
+                    save_message(
                         title=warning_title,
                         message=warning_msg,
-                        msg_type="alert"
+                        type="alert",
+                        target_type="driver",
+                        driver_id=driver_id,
+                        audience="drivers"
                     )
                 except Exception as e:
-                    logger.error(f"Error sending deviation Telegram notification: {e}")
+                    logger.error(f"Error saving deviation message: {e}")
 
-            return {
-                "success": False,
-                "deviated": True,
-                "distance_meters": round(dist_meters, 1),
-                "message": warning_msg,
-                "driver_id": driver_id
-            }
+                # 3. Send warning notification to driver's Telegram Bot
+                tg_id = target_driver.get("telegram_id")
+                if tg_id:
+                    try:
+                        await send_driver_notification(
+                            telegram_id=tg_id,
+                            title=warning_title,
+                            message=warning_msg,
+                            msg_type="alert"
+                        )
+                    except Exception as e:
+                        logger.error(f"Error sending deviation Telegram notification: {e}")
+
+                return {
+                    "success": False,
+                    "deviated": True,
+                    "distance_meters": round(dist_meters, 1),
+                    "message": warning_msg,
+                    "driver_id": driver_id
+                }
+            else:
+                # Driver hasn't started active work on route yet (at home or far from route)
+                # DO NOT send Telegram alert or save deviation messages!
+                return {
+                    "success": False,
+                    "deviated": False,
+                    "out_of_route": True,
+                    "distance_meters": round(dist_meters, 1),
+                    "message": "Joylashuvni yoqish uchun avval marshrut boshlanish nuqtasiga yoki marshrut chizig'iga yaqinlashing.",
+                    "driver_id": driver_id
+                }
 
     loc = update_driver_location(
         driver_id=driver_id,

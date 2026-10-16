@@ -55,6 +55,7 @@ function App() {
   const [assignedRoute, setAssignedRoute] = useState(null)
   const [driverLocation, setDriverLocation] = useState(null)
   const [deviationAlert, setDeviationAlert] = useState(null)
+  const [routeWarning, setRouteWarning] = useState(null)
 
   if (!isTelegram) {
     return (
@@ -350,6 +351,9 @@ function App() {
             handleLocationToggle(false);
             setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan 1 km dan ortiq uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
             setUnreadCount(prev => prev + 1);
+          } else if (data && data.out_of_route) {
+            handleLocationToggle(false);
+            setRouteWarning(data.message || "Joylashuvni yoqish uchun avval marshrut boshlanish nuqtasiga yoki marshrut chizig'iga yaqinlashing.");
           }
         })
         .catch(err => console.error("Immediate GPS send error:", err));
@@ -401,6 +405,9 @@ function App() {
               handleLocationToggle(false);
               setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan 1 km dan ortiq uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
               setUnreadCount(prev => prev + 1);
+            } else if (data && data.out_of_route) {
+              handleLocationToggle(false);
+              setRouteWarning(data.message || "Joylashuvni yoqish uchun avval marshrut boshlanish nuqtasiga yoki marshrut chizig'iga yaqinlashing.");
             }
           })
           .catch(err => console.error("GPS send error:", err));
@@ -617,6 +624,39 @@ function App() {
             <button 
               className="btn-primary" 
               onClick={() => setDeviationAlert(null)}
+              style={{ 
+                marginTop: '16px', 
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '16px',
+                fontWeight: '700'
+              }}
+            >
+              Tushunarli
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Out of Route Modal (informative when toggled far from route) */}
+      {routeWarning && (
+        <div className="driver-modal-overlay" onClick={() => setRouteWarning(null)}>
+          <div className="driver-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="driver-modal-close" onClick={() => setRouteWarning(null)}>
+              <X size={20} />
+            </button>
+            <div className="driver-modal-icon-wrap" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' }}>
+              <Navigation size={36} color="#3b82f6" />
+            </div>
+            <h3 className="driver-modal-title">Marshrutdan uzoqdasiz</h3>
+            <p className="driver-modal-desc">
+              {routeWarning}
+            </p>
+            <button 
+              className="btn-primary" 
+              onClick={() => setRouteWarning(null)}
               style={{ 
                 marginTop: '16px', 
                 width: '100%',

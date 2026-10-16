@@ -130,7 +130,7 @@ export default function RouteList({ onSelectRoute }) {
 
     return {
       driverId: driver.driver_id,
-      driverName: `${driver.name} ${driver.surname || ''}`,
+      driverName: `${driver.name} ${driver.car_number ? `(${driver.car_number})` : (driver.surname || '')}`,
       phone: driver.phone,
       routeId: driver.route_id || driverRoute?.id,
       routeNumber: driver.route_number || driverRoute?.number || "1",

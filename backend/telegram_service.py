@@ -29,6 +29,7 @@ async def send_approval_message(
     surname: str,
     phone: str,
     driver_id: int = None,
+    car_number: str = None,
     web_app_url: str = DEFAULT_WEB_APP_URL,
     pending_message_id: int = None
 ) -> bool:
@@ -41,7 +42,8 @@ async def send_approval_message(
     params_dict = {
         "phone": phone,
         "name": name,
-        "surname": surname
+        "surname": surname or car_number or "",
+        "car_number": car_number or surname or ""
     }
     if driver_id:
         params_dict["driver_id"] = driver_id

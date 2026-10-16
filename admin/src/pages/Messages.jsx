@@ -262,7 +262,7 @@ export default function Messages() {
                       ) : (
                         drivers.map(d => (
                           <option key={d.id} value={d.id}>
-                            {d.name} {d.surname} ({d.phone})
+                            {d.name} {d.car_number ? `(${d.car_number})` : ''} ({d.phone})
                           </option>
                         ))
                       )}
@@ -354,7 +354,7 @@ export default function Messages() {
                         ? '👥 Barcha yo\'lovchilarga' 
                         : item.target_type === 'all' 
                           ? '📢 Barchaga' 
-                          : `👤 ${item.driver_name || 'Haydovchi'} ${item.driver_surname || ''}`}
+                          : `👤 ${item.driver_name || 'Haydovchi'} ${item.driver_car_number ? `(${item.driver_car_number})` : ''}`}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span className="history-date">{formatAdminDate(item.created_at)}</span>

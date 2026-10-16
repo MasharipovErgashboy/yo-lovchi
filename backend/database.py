@@ -157,6 +157,15 @@ def init_db():
             ) THEN
                 ALTER TABLE candidates ADD COLUMN assigned_route_id INTEGER REFERENCES routes(id) ON DELETE SET NULL;
             END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'candidates' AND column_name = 'car_number'
+            ) THEN
+                ALTER TABLE candidates ADD COLUMN car_number VARCHAR(50);
+            END IF;
+            ALTER TABLE candidates ALTER COLUMN surname DROP NOT NULL;
+        EXCEPTION
+            WHEN OTHERS THEN NULL;
         END $$;
     """)
 
@@ -171,14 +180,21 @@ def init_db():
             speed DOUBLE PRECISION DEFAULT 0.0,
             capacity VARCHAR(50) DEFAULT 'bosh',
             is_online BOOLEAN DEFAULT TRUE,
+            active_on_route BOOLEAN DEFAULT FALSE,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
 
-    # Ensure shift and terminal tracking columns exist in driver_locations
+    # Ensure shift, active_on_route and terminal tracking columns exist in driver_locations
     cursor.execute("""
         DO $$
         BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'driver_locations' AND column_name = 'active_on_route'
+            ) THEN
+                ALTER TABLE driver_locations ADD COLUMN active_on_route BOOLEAN DEFAULT FALSE;
+            END IF;
             IF NOT EXISTS (
                 SELECT 1 FROM information_schema.columns 
                 WHERE table_name = 'driver_locations' AND column_name = 'shift_started_at'
@@ -257,6 +273,8 @@ def format_row(row: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     for k, v in d.items():
         if isinstance(v, (datetime, date)):
             d[k] = v.strftime("%Y-%m-%d %H:%M:%S")
+    if "surname" in d and ("car_number" not in d or not d.get("car_number")):
+        d["car_number"] = d.get("surname") or ""
     return d
 
 def get_candidates(status: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -265,11 +283,13 @@ def get_candidates(status: Optional[str] = None) -> List[Dict[str, Any]]:
     query = """
         SELECT 
             c.*, 
+            COALESCE(c.car_number, c.surname, '') as car_number,
             r.number as route_number, 
             r.name as route_name, 
             r.color as route_color,
             r.direction as route_direction,
             dl.is_online as dl_is_online,
+            dl.active_on_route as dl_active_on_route,
             dl.updated_at as location_updated_at,
             dl.shift_started_at,
             dl.shift_ended_at,
@@ -316,11 +336,13 @@ def get_candidate_by_id(candidate_id: int) -> Optional[Dict[str, Any]]:
     cursor.execute("""
         SELECT 
             c.*, 
+            COALESCE(c.car_number, c.surname, '') as car_number,
             r.number as route_number, 
             r.name as route_name, 
             r.color as route_color,
             r.direction as route_direction,
             dl.is_online as dl_is_online,
+            dl.active_on_route as dl_active_on_route,
             dl.updated_at as location_updated_at,
             dl.shift_started_at,
             dl.shift_ended_at,
@@ -358,11 +380,13 @@ def get_candidate_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
     cursor.execute("""
         SELECT 
             c.*, 
+            COALESCE(c.car_number, c.surname, '') as car_number,
             r.number as route_number, 
             r.name as route_name, 
             r.color as route_color,
             r.direction as route_direction,
             dl.is_online as dl_is_online,
+            dl.active_on_route as dl_active_on_route,
             dl.updated_at as location_updated_at,
             dl.shift_started_at,
             dl.shift_ended_at,
@@ -394,10 +418,13 @@ def get_candidate_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
     d["is_online"] = is_online
     return d
 
-def save_candidate(telegram_id: int, name: str, surname: str, phone: str, pending_message_id: Optional[int] = None) -> Dict[str, Any]:
+def save_candidate(telegram_id: int, name: str, surname: str, phone: str, pending_message_id: Optional[int] = None, car_number: Optional[str] = None) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
     now = datetime.now()
+    
+    final_car_number = (car_number or surname or "").strip()
+    final_surname = (surname or car_number or "").strip()
     
     cursor.execute("SELECT id FROM candidates WHERE telegram_id = %s;", (telegram_id,))
     existing = cursor.fetchone()
@@ -405,17 +432,17 @@ def save_candidate(telegram_id: int, name: str, surname: str, phone: str, pendin
     if existing:
         cursor.execute("""
             UPDATE candidates 
-            SET name = %s, surname = %s, phone = %s, status = 'pending', pending_message_id = %s, updated_at = %s
+            SET name = %s, surname = %s, car_number = %s, phone = %s, status = 'pending', pending_message_id = %s, updated_at = %s
             WHERE telegram_id = %s
             RETURNING id;
-        """, (name, surname, phone, pending_message_id, now, telegram_id))
+        """, (name, final_surname, final_car_number, phone, pending_message_id, now, telegram_id))
         candidate_id = cursor.fetchone()["id"]
     else:
         cursor.execute("""
-            INSERT INTO candidates (telegram_id, name, surname, phone, status, pending_message_id, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, 'pending', %s, %s, %s)
+            INSERT INTO candidates (telegram_id, name, surname, car_number, phone, status, pending_message_id, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, 'pending', %s, %s, %s)
             RETURNING id;
-        """, (telegram_id, name, surname, phone, pending_message_id, now, now))
+        """, (telegram_id, name, final_surname, final_car_number, phone, pending_message_id, now, now))
         candidate_id = cursor.fetchone()["id"]
         
     conn.commit()
@@ -502,7 +529,9 @@ def get_admin_messages(audience: Optional[str] = None) -> List[Dict[str, Any]]:
     query = """
         SELECT m.id, m.title, m.message, m.type, m.target_type, m.driver_id, m.sender_type, m.created_at,
                COALESCE(m.audience, 'drivers') as audience,
-               c.name as driver_name, c.surname as driver_surname, c.phone as driver_phone
+               c.name as driver_name, c.surname as driver_surname,
+               COALESCE(c.car_number, c.surname, '') as driver_car_number,
+               c.phone as driver_phone
         FROM messages m
         LEFT JOIN candidates c ON m.driver_id = c.id
     """
@@ -605,6 +634,7 @@ def get_support_inquiries(sender_type: Optional[str] = None) -> List[Dict[str, A
         SELECT si.*,
                c.name as profile_driver_name,
                c.surname as profile_driver_surname,
+               COALESCE(c.car_number, c.surname, '') as profile_driver_car_number,
                c.phone as profile_driver_phone,
                c.telegram_id as profile_driver_tg,
                r.number as route_number,
@@ -1207,6 +1237,24 @@ def record_driver_trip(driver_id: int, route_id: Optional[int] = None, direction
     conn.close()
     return format_row(row)
 
+def get_driver_location(driver_id: int) -> Optional[Dict[str, Any]]:
+    """Get the current live location and online state of a driver."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT dl.*, 
+               c.name as driver_name, 
+               COALESCE(c.car_number, c.surname, '') as driver_car_number,
+               c.assigned_route_id
+        FROM driver_locations dl
+        JOIN candidates c ON dl.driver_id = c.id
+        WHERE dl.driver_id = %s;
+    """, (driver_id,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return format_row(row) if row else None
+
 def update_driver_location(
     driver_id: int,
     latitude: float,
@@ -1231,9 +1279,9 @@ def update_driver_location(
     cursor.execute("""
         INSERT INTO driver_locations (
             driver_id, route_id, latitude, longitude, heading, speed, capacity,
-            is_online, shift_started_at, shift_ended_at, updated_at
+            is_online, active_on_route, shift_started_at, shift_ended_at, updated_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, true, true, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP)
         ON CONFLICT (driver_id) DO UPDATE
         SET route_id = COALESCE(EXCLUDED.route_id, driver_locations.route_id),
             latitude = EXCLUDED.latitude,
@@ -1242,6 +1290,7 @@ def update_driver_location(
             speed = EXCLUDED.speed,
             capacity = EXCLUDED.capacity,
             is_online = true,
+            active_on_route = true,
             shift_started_at = CASE 
                 WHEN driver_locations.is_online = false OR driver_locations.shift_started_at IS NULL OR driver_locations.shift_ended_at IS NOT NULL 
                 THEN CURRENT_TIMESTAMP 
@@ -1270,6 +1319,7 @@ def set_driver_offline(driver_id: int) -> bool:
     cursor.execute("""
         UPDATE driver_locations 
         SET is_online = false,
+            active_on_route = false,
             shift_ended_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
         WHERE driver_id = %s;
@@ -1300,7 +1350,8 @@ def get_live_drivers_for_route(route_id: int) -> List[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT dl.*, c.name, c.surname, c.phone, r.number as route_number, r.name as route_name, r.color as route_color, r.stops as route_stops, r.polyline as route_polyline
+        SELECT dl.*, c.name, c.surname, COALESCE(c.car_number, c.surname, '') as car_number, c.phone, 
+               r.number as route_number, r.name as route_name, r.color as route_color, r.stops as route_stops, r.polyline as route_polyline
         FROM driver_locations dl
         JOIN candidates c ON dl.driver_id = c.id
         LEFT JOIN routes r ON dl.route_id = r.id
@@ -1319,7 +1370,8 @@ def get_all_live_drivers() -> List[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT dl.*, c.name, c.surname, c.phone, r.number as route_number, r.name as route_name, r.color as route_color, r.stops as route_stops, r.polyline as route_polyline
+        SELECT dl.*, c.name, c.surname, COALESCE(c.car_number, c.surname, '') as car_number, c.phone, 
+               r.number as route_number, r.name as route_name, r.color as route_color, r.stops as route_stops, r.polyline as route_polyline
         FROM driver_locations dl
         JOIN candidates c ON dl.driver_id = c.id
         LEFT JOIN routes r ON dl.route_id = r.id
@@ -1331,6 +1383,8 @@ def get_all_live_drivers() -> List[Dict[str, Any]]:
     cursor.close()
     conn.close()
     return [format_row(r) for r in rows]
+
+
 
 def get_dashboard_stats() -> Dict[str, Any]:
     """Calculate real-time dashboard stats from the database."""
