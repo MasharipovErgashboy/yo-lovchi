@@ -221,18 +221,22 @@ export default function RouteList({ onSelectRoute }) {
             '--dir-color': activeRoute?.arrow_color_forward || '#0066FF'
           }}
         >
-          <div className="direction-tab-indicator">
-            <svg width="15" height="15" viewBox="0 0 32 32">
-              <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={activeRoute?.arrow_color_forward || '#0066FF'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
-            </svg>
+          <div className="direction-tab-title">
+            {forwardDirTitle}
           </div>
-          <div className="direction-tab-content">
-            <span className="direction-tab-title">{forwardDirTitle}</span>
-            <span className="direction-tab-sub">Ketmoqda</span>
+          <div className="direction-tab-bottom">
+            <div className="direction-tab-meta">
+              <div className="direction-tab-indicator">
+                <svg width="12" height="12" viewBox="0 0 32 32">
+                  <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={activeRoute?.arrow_color_forward || '#0066FF'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <span className="direction-tab-sub">Ketmoqda</span>
+            </div>
+            <span className="direction-tab-badge">
+              {forwardVehicles.length}
+            </span>
           </div>
-          <span className="direction-tab-badge">
-            {forwardVehicles.length}
-          </span>
         </button>
 
         <button 
@@ -243,18 +247,22 @@ export default function RouteList({ onSelectRoute }) {
             '--dir-color': activeRoute?.arrow_color_backward || '#10B981'
           }}
         >
-          <div className="direction-tab-indicator" style={{ transform: 'rotate(180deg)' }}>
-            <svg width="15" height="15" viewBox="0 0 32 32">
-              <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={activeRoute?.arrow_color_backward || '#10B981'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
-            </svg>
+          <div className="direction-tab-title">
+            {backwardDirTitle}
           </div>
-          <div className="direction-tab-content">
-            <span className="direction-tab-title">{backwardDirTitle}</span>
-            <span className="direction-tab-sub">Kelmoqda</span>
+          <div className="direction-tab-bottom">
+            <div className="direction-tab-meta">
+              <div className="direction-tab-indicator" style={{ transform: 'rotate(180deg)' }}>
+                <svg width="12" height="12" viewBox="0 0 32 32">
+                  <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={activeRoute?.arrow_color_backward || '#10B981'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <span className="direction-tab-sub">Kelmoqda</span>
+            </div>
+            <span className="direction-tab-badge">
+              {backwardVehicles.length}
+            </span>
           </div>
-          <span className="direction-tab-badge">
-            {backwardVehicles.length}
-          </span>
         </button>
       </div>
 
