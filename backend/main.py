@@ -36,7 +36,8 @@ from database import (
     get_live_drivers_for_route,
     get_all_live_drivers,
     get_dashboard_stats,
-    record_driver_trip
+    record_driver_trip,
+    calculate_distance_to_route_polyline
 )
 from telegram_service import (
     send_approval_message,
@@ -569,23 +570,73 @@ def assign_route(driver_id: int, payload: AssignRouteRequest):
     return {"success": success, "driver_id": driver_id, "route_id": payload.route_id}
 
 @app.post("/api/driver/location")
-def update_location(payload: DriverLocationUpdate):
+async def update_location(payload: DriverLocationUpdate):
     """Driver mobile/mini-app transmits live GPS coordinates."""
     target_driver = resolve_driver(driver_id=payload.driver_id, telegram_id=payload.telegram_id, phone=payload.phone)
 
     if not target_driver:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
 
+    driver_id = target_driver["id"]
+    target_route_id = payload.route_id or target_driver.get("assigned_route_id")
+
+    # Check 1 km distance deviation from assigned route
+    if target_route_id and payload.latitude and payload.longitude:
+        dist_meters = calculate_distance_to_route_polyline(payload.latitude, payload.longitude, target_route_id)
+        if dist_meters is not None and dist_meters > 1000.0:
+            # 1. Turn driver offline immediately in DB (removes vehicle from passenger app)
+            set_driver_offline(driver_id)
+
+            warning_title = "Marshrutdan chetlanish"
+            warning_msg = (
+                "Siz belgilangan marshrut chizig'idan 1 km dan ortiq uzoqlashdingiz. "
+                "Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing."
+            )
+
+            # 2. Save personal message to driver's Mini App messages
+            try:
+                save_message(
+                    title=warning_title,
+                    message=warning_msg,
+                    type="alert",
+                    target_type="driver",
+                    driver_id=driver_id,
+                    audience="drivers"
+                )
+            except Exception as e:
+                logger.error(f"Error saving deviation message: {e}")
+
+            # 3. Send warning notification to driver's Telegram Bot
+            tg_id = target_driver.get("telegram_id")
+            if tg_id:
+                try:
+                    await send_driver_notification(
+                        telegram_id=tg_id,
+                        title=warning_title,
+                        message=warning_msg,
+                        msg_type="alert"
+                    )
+                except Exception as e:
+                    logger.error(f"Error sending deviation Telegram notification: {e}")
+
+            return {
+                "success": False,
+                "deviated": True,
+                "distance_meters": round(dist_meters, 1),
+                "message": warning_msg,
+                "driver_id": driver_id
+            }
+
     loc = update_driver_location(
-        driver_id=target_driver["id"],
+        driver_id=driver_id,
         latitude=payload.latitude,
         longitude=payload.longitude,
         heading=payload.heading or 0.0,
         speed=payload.speed or 0.0,
         capacity=payload.capacity or "bosh",
-        route_id=payload.route_id
+        route_id=target_route_id
     )
-    return {"success": True, "location": loc}
+    return {"success": True, "location": loc, "driver_id": driver_id, "deviated": False}
 
 @app.get("/api/routes/{route_id}/live-drivers")
 def get_route_live_drivers(route_id: int, response: Response):

@@ -302,16 +302,7 @@ def get_candidates(status: Optional[str] = None) -> List[Dict[str, Any]]:
     for r in rows:
         loc_updated = r.get("location_updated_at")
         dl_online = r.get("dl_is_online")
-        is_online = False
-        if dl_online and loc_updated:
-            try:
-                if isinstance(loc_updated, datetime):
-                    diff = (now - loc_updated).total_seconds()
-                else:
-                    diff = 0
-                is_online = (diff < 600)
-            except Exception:
-                is_online = bool(dl_online)
+        is_online = bool(dl_online)
 
         d = format_row(r)
         d["is_online"] = is_online
@@ -354,18 +345,8 @@ def get_candidate_by_id(candidate_id: int) -> Optional[Dict[str, Any]]:
     if not row:
         return None
 
-    loc_updated = row.get("location_updated_at")
     dl_online = row.get("dl_is_online")
-    is_online = False
-    if dl_online and loc_updated:
-        try:
-            if isinstance(loc_updated, datetime):
-                diff = (datetime.now() - loc_updated).total_seconds()
-            else:
-                diff = 0
-            is_online = (diff < 600)
-        except Exception:
-            is_online = bool(dl_online)
+    is_online = bool(dl_online)
 
     d = format_row(row)
     d["is_online"] = is_online
@@ -406,18 +387,8 @@ def get_candidate_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
     if not row:
         return None
 
-    loc_updated = row.get("location_updated_at")
     dl_online = row.get("dl_is_online")
-    is_online = False
-    if dl_online and loc_updated:
-        try:
-            if isinstance(loc_updated, datetime):
-                diff = (datetime.now() - loc_updated).total_seconds()
-            else:
-                diff = 0
-            is_online = (diff < 600)
-        except Exception:
-            is_online = bool(dl_online)
+    is_online = bool(dl_online)
 
     d = format_row(row)
     d["is_online"] = is_online
@@ -484,16 +455,22 @@ def get_candidate_by_phone(phone: str) -> Optional[Dict[str, Any]]:
     # Normalize phone: extract numbers
     clean_phone = "".join(filter(str.isdigit, phone))
     cursor.execute("""
-        SELECT c.*, r.number as route_number, r.name as route_name, r.color as route_color
+        SELECT c.*, r.number as route_number, r.name as route_name, r.color as route_color,
+               dl.is_online as dl_is_online
         FROM candidates c
         LEFT JOIN routes r ON c.assigned_route_id = r.id
+        LEFT JOIN driver_locations dl ON c.id = dl.driver_id
         WHERE regexp_replace(c.phone, '[^0-9]', '', 'g') = %s 
         OR c.phone = %s;
     """, (clean_phone, phone))
     row = cursor.fetchone()
     cursor.close()
     conn.close()
-    return format_row(row) if row else None
+    if not row:
+        return None
+    d = format_row(row)
+    d["is_online"] = bool(row.get("dl_is_online"))
+    return d
 
 def save_message(
     title: str,
@@ -833,7 +810,6 @@ def get_routes(is_active: Optional[bool] = None) -> List[Dict[str, Any]]:
         FROM routes r
         LEFT JOIN driver_locations dl ON r.id = dl.route_id 
              AND dl.is_online = true 
-             AND dl.updated_at >= NOW() - INTERVAL '3 minutes'
     """
     if is_active is not None:
         query += " WHERE r.is_active = %s"
@@ -876,7 +852,6 @@ def get_route_by_id(route_id: int) -> Optional[Dict[str, Any]]:
         FROM routes r
         LEFT JOIN driver_locations dl ON r.id = dl.route_id 
              AND dl.is_online = true 
-             AND dl.updated_at >= NOW() - INTERVAL '3 minutes'
         WHERE r.id = %s
         GROUP BY r.id;
     """, (route_id,))
@@ -1042,6 +1017,86 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     a = math.sin(delta_phi / 2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0)**2
     c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
     return R * c
+
+def distance_to_segment(p_lat: float, p_lng: float, a_lat: float, a_lng: float, b_lat: float, b_lng: float) -> float:
+    """Distance in meters from point P to line segment AB."""
+    d_ab = haversine_distance(a_lat, a_lng, b_lat, b_lng)
+    if d_ab == 0:
+        return haversine_distance(p_lat, p_lng, a_lat, a_lng)
+
+    mid_lat_rad = math.radians((a_lat + b_lat) / 2.0)
+    cos_lat = math.cos(mid_lat_rad)
+
+    dx = (b_lng - a_lng) * cos_lat
+    dy = b_lat - a_lat
+
+    seg_len_sq = dx * dx + dy * dy
+    if seg_len_sq == 0:
+        return haversine_distance(p_lat, p_lng, a_lat, a_lng)
+
+    px = (p_lng - a_lng) * cos_lat
+    py = p_lat - a_lat
+
+    t = (px * dx + py * dy) / seg_len_sq
+    t = max(0.0, min(1.0, t))
+
+    closest_lat = a_lat + t * (b_lat - a_lat)
+    closest_lng = a_lng + t * (b_lng - a_lng)
+
+    return haversine_distance(p_lat, p_lng, closest_lat, closest_lng)
+
+def calculate_distance_to_route_polyline(lat: float, lng: float, route_id: int) -> Optional[float]:
+    """Calculate minimum distance in meters from (lat, lng) to the assigned route's polyline or stops."""
+    route = get_route_by_id(route_id)
+    if not route:
+        return None
+
+    polyline = route.get("polyline")
+    stops = route.get("stops")
+
+    min_dist = float('inf')
+
+    # 1. Check polyline
+    if polyline and isinstance(polyline, list) and len(polyline) > 0:
+        for i in range(len(polyline)):
+            p = polyline[i]
+            if len(p) >= 2:
+                p_lat, p_lng = float(p[0]), float(p[1])
+                d = haversine_distance(lat, lng, p_lat, p_lng)
+                if d < min_dist:
+                    min_dist = d
+                if i < len(polyline) - 1:
+                    next_p = polyline[i + 1]
+                    if len(next_p) >= 2:
+                        n_lat, n_lng = float(next_p[0]), float(next_p[1])
+                        seg_d = distance_to_segment(lat, lng, p_lat, p_lng, n_lat, n_lng)
+                        if seg_d < min_dist:
+                            min_dist = seg_d
+
+    # 2. Check stops if polyline did not yield a valid distance
+    if min_dist == float('inf') and stops and isinstance(stops, list) and len(stops) > 0:
+        for i in range(len(stops)):
+            s = stops[i]
+            s_lat = s.get("lat")
+            s_lng = s.get("lng")
+            if s_lat is not None and s_lng is not None:
+                d = haversine_distance(lat, lng, float(s_lat), float(s_lng))
+                if d < min_dist:
+                    min_dist = d
+                if i < len(stops) - 1:
+                    next_s = stops[i + 1]
+                    n_lat = next_s.get("lat")
+                    n_lng = next_s.get("lng")
+                    if n_lat is not None and n_lng is not None:
+                        seg_d = distance_to_segment(
+                            lat, lng,
+                            float(s_lat), float(s_lng),
+                            float(n_lat), float(n_lng)
+                        )
+                        if seg_d < min_dist:
+                            min_dist = seg_d
+
+    return min_dist if min_dist != float('inf') else None
 
 def check_and_record_trip(cursor, driver_id: int, route_id: Optional[int], lat: float, lng: float):
     """Detect when a driver reaches start or end terminal of route and records completed trips."""
@@ -1251,7 +1306,7 @@ def get_live_drivers_for_route(route_id: int) -> List[Dict[str, Any]]:
         LEFT JOIN routes r ON dl.route_id = r.id
         WHERE dl.route_id = %s 
           AND dl.is_online = true 
-          AND dl.updated_at >= NOW() - INTERVAL '5 minutes'
+          AND c.status = 'approved'
         ORDER BY dl.updated_at DESC;
     """, (route_id,))
     rows = cursor.fetchall()
@@ -1269,7 +1324,7 @@ def get_all_live_drivers() -> List[Dict[str, Any]]:
         JOIN candidates c ON dl.driver_id = c.id
         LEFT JOIN routes r ON dl.route_id = r.id
         WHERE dl.is_online = true 
-          AND dl.updated_at >= NOW() - INTERVAL '5 minutes'
+          AND c.status = 'approved'
         ORDER BY dl.updated_at DESC;
     """)
     rows = cursor.fetchall()
@@ -1287,14 +1342,13 @@ def get_dashboard_stats() -> Dict[str, Any]:
     row = cursor.fetchone()
     total_drivers = row.get("count", 0) if row else 0
 
-    # 2. Online drivers (is_online = true and updated in the last 10 minutes)
+    # 2. Online drivers (is_online = true)
     cursor.execute("""
         SELECT COUNT(DISTINCT dl.driver_id) as count
         FROM driver_locations dl
         JOIN candidates c ON dl.driver_id = c.id
         WHERE c.status = 'approved'
-          AND dl.is_online = true 
-          AND dl.updated_at >= NOW() - INTERVAL '10 minutes';
+          AND dl.is_online = true;
     """)
     row = cursor.fetchone()
     online_drivers = row.get("count", 0) if row else 0
@@ -1309,8 +1363,7 @@ def get_dashboard_stats() -> Dict[str, Any]:
         JOIN candidates c ON dl.driver_id = c.id
         WHERE c.status = 'approved'
           AND dl.is_online = true 
-          AND dl.route_id IS NOT NULL
-          AND dl.updated_at >= NOW() - INTERVAL '10 minutes';
+          AND dl.route_id IS NOT NULL;
     """)
     row = cursor.fetchone()
     on_road = row.get("count", 0) if row else 0

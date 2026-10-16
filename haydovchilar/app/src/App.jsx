@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { AlertTriangle, Navigation, MapPin } from 'lucide-react'
+import { AlertTriangle, Navigation, MapPin, X } from 'lucide-react'
 import './App.css'
 import Header from './components/Header'
 import LocationToggle from './components/LocationToggle'
@@ -48,12 +48,13 @@ function App() {
   const [activeTab, setActiveTab] = useState('joylashuv') // 'joylashuv' | 'xabarlar' | 'profil'
   const [subTab, setSubTab] = useState('joylashuv') // 'joylashuv' | 'xarita'
   const [navToStartActive, setNavToStartActive] = useState(false)
-  const [locationEnabled, setLocationEnabled] = useState(false)
+  const [locationEnabled, setLocationEnabled] = useState(() => safeGetStorage('yolovchi_location_enabled') === 'true')
   const [capacity, setCapacity] = useState('bosh') // 'bosh' | 'ozroq' | 'tola'
   const [isKickedOut, setIsKickedOut] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const [assignedRoute, setAssignedRoute] = useState(null)
   const [driverLocation, setDriverLocation] = useState(null)
+  const [deviationAlert, setDeviationAlert] = useState(null)
 
   if (!isTelegram) {
     return (
@@ -211,6 +212,17 @@ function App() {
             if (data.driver.id) safeSetStorage('yolovchi_driver_id', data.driver.id);
             if (data.driver.phone) safeSetStorage('yolovchi_driver_phone', data.driver.phone);
             if (data.driver.telegram_id) safeSetStorage('yolovchi_driver_tg_id', data.driver.telegram_id);
+
+            // Sync online state with database
+            if (data.driver.is_online) {
+              setLocationEnabled(true);
+              isOnlineRef.current = true;
+              safeSetStorage('yolovchi_location_enabled', 'true');
+            } else {
+              setLocationEnabled(false);
+              isOnlineRef.current = false;
+              safeSetStorage('yolovchi_location_enabled', 'false');
+            }
           }
           if (data && data.assigned_route) {
             setAssignedRoute(prev => {
@@ -278,7 +290,7 @@ function App() {
     }).catch(err => console.error("Capacity change error:", err));
   };
 
-  const isOnlineRef = useRef(false);
+  const isOnlineRef = useRef(safeGetStorage('yolovchi_location_enabled') === 'true');
   const watchIdRef = useRef(null);
 
   // Helper to get reliable driver identity from URL params or localStorage
@@ -298,6 +310,7 @@ function App() {
   const handleLocationToggle = (newEnabled, currentPos = null) => {
     isOnlineRef.current = newEnabled;
     setLocationEnabled(newEnabled);
+    safeSetStorage('yolovchi_location_enabled', newEnabled ? 'true' : 'false');
 
     const identity = getDriverIdentity();
 
@@ -330,7 +343,16 @@ function App() {
             speed: currentPos?.coords?.speed ? Math.round(currentPos.coords.speed * 3.6) : (driverLocation?.speed || 0.0),
             capacity: capacity
           })
-        }).catch(err => console.error("Immediate GPS send error:", err));
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.deviated) {
+            handleLocationToggle(false);
+            setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan 1 km dan ortiq uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
+            setUnreadCount(prev => prev + 1);
+          }
+        })
+        .catch(err => console.error("Immediate GPS send error:", err));
       }
     }
   };
@@ -372,7 +394,16 @@ function App() {
               speed: speed,
               capacity: capacity
             })
-          }).catch(err => console.error("GPS send error:", err));
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.deviated) {
+              handleLocationToggle(false);
+              setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan 1 km dan ortiq uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
+              setUnreadCount(prev => prev + 1);
+            }
+          })
+          .catch(err => console.error("GPS send error:", err));
         }
       }
     };
@@ -566,6 +597,39 @@ function App() {
       {activeTab === 'profil' && (
         <div className="tab-content" style={{ padding: 0 }}>
           <Profile />
+        </div>
+      )}
+
+      {/* 1 KM Deviation Alert Modal */}
+      {deviationAlert && (
+        <div className="driver-modal-overlay" onClick={() => setDeviationAlert(null)}>
+          <div className="driver-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="driver-modal-close" onClick={() => setDeviationAlert(null)}>
+              <X size={20} />
+            </button>
+            <div className="driver-modal-icon-wrap warning">
+              <AlertTriangle size={36} color="#ef4444" />
+            </div>
+            <h3 className="driver-modal-title">Marshrutdan chetlanish!</h3>
+            <p className="driver-modal-desc">
+              {deviationAlert}
+            </p>
+            <button 
+              className="btn-primary" 
+              onClick={() => setDeviationAlert(null)}
+              style={{ 
+                marginTop: '16px', 
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '16px',
+                fontWeight: '700'
+              }}
+            >
+              Tushunarli
+            </button>
+          </div>
         </div>
       )}
 
