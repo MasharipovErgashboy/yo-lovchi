@@ -47,6 +47,58 @@
   box-shadow: 0 0 0 4px rgba(0, 102, 255, 0.25);
 }
 
+/* User My Location Marker */
+.user-marker-wrapper {
+  background: transparent !important;
+  border: none !important;
+}
+
+.user-my-location-marker {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-location-pulse {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(0, 102, 255, 0.28);
+  border: 1.5px solid rgba(0, 102, 255, 0.6);
+  animation: userLocationPulseAnim 2s infinite ease-out;
+  pointer-events: none;
+}
+
+.user-location-dot {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0066FF;
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 102, 255, 0.65), 0 0 0 1px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+}
+
+@keyframes userLocationPulseAnim {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.95;
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0.15;
+  }
+  100% {
+    transform: scale(2.0);
+    opacity: 0;
+  }
+}
+
 /* Passenger Driver Arrow Marker */
 .bus-marker-wrapper {
   background: transparent !important;

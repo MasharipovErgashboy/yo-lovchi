@@ -169,7 +169,11 @@ function App() {
             />
           )}
           {activeTab === 'xarita' && (
-            <MapComponent initialRouteId={selectedRouteForMap} />
+            <MapComponent 
+              initialRouteId={selectedRouteForMap} 
+              userLocation={userLocation}
+              isUserLocationActive={isUserLocationActive}
+            />
           )}
           {activeTab === 'support' && <Support />}
         </main>

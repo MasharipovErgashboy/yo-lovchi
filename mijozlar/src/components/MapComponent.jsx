@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet-rotate';
 import { 
   Bus, 
   MapPin, 
@@ -16,6 +17,8 @@ import {
   Compass, 
   Plus,
   Minus,
+  RotateCcw,
+  RotateCw,
   X,
   Loader2
 } from 'lucide-react';
@@ -144,11 +147,17 @@ function determineDriverDirection(driver, prevDriverState, polyPoints, fallbackI
   return fallbackIndex % 2 === 0 ? 'ketmoqda' : 'kelmoqda';
 }
 
-export default function MapComponent({ initialRouteId = null, onBackToRoutes }) {
+export default function MapComponent({ 
+  initialRouteId = null, 
+  onBackToRoutes,
+  userLocation = null,
+  isUserLocationActive = false
+}) {
   const mapContainerRef = useRef(null);
   const mapInstance = useRef(null);
   const routeLayerGroupRef = useRef(null);
   const busLayerGroupRef = useRef(null);
+  const userLayerGroupRef = useRef(null);
   const busMarkersRef = useRef({});
   const tileLayerRef = useRef(null);
 
@@ -160,6 +169,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
   const [currentStopIndex, setCurrentStopIndex] = useState(2); // e.g. 5-bekat (hozir)
   const [activeLayer, setActiveLayer] = useState('google');
   const [toastMessage, setToastMessage] = useState(null);
+  const [currentBearing, setCurrentBearing] = useState(0);
   const [isSheetCollapsed, setIsSheetCollapsed] = useState(true);
   const [collapsedHeight, setCollapsedHeight] = useState(96);
   const [expandedHeight, setExpandedHeight] = useState(280);
@@ -269,11 +279,26 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       zoom: 13,
       zoomControl: false,
       attributionControl: false,
-      tap: false,
+      rotate: true,
+      touchRotate: true,
+      rotateControl: false,
+      bearing: 0,
+      dragging: true,
       touchZoom: true,
+      tap: false,
       bounceAtZoomLimits: false,
       maxZoom: 20,
       minZoom: 6
+    });
+
+    // Track rotation angle to update compass
+    map.on('rotate', () => {
+      try {
+        const b = map.getBearing ? map.getBearing() : 0;
+        setCurrentBearing(Math.round(b));
+      } catch (e) {
+        // quiet fallback
+      }
     });
 
     const initialLayer = MAP_LAYERS[activeLayer] || MAP_LAYERS.google;
@@ -284,6 +309,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
 
     routeLayerGroupRef.current = L.layerGroup().addTo(map);
     busLayerGroupRef.current = L.layerGroup().addTo(map);
+    userLayerGroupRef.current = L.layerGroup().addTo(map);
     mapInstance.current = map;
 
     map.on('movestart dragstart zoomstart', () => {
@@ -307,6 +333,45 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
     }).addTo(mapInstance.current);
     tileLayerRef.current.bringToBack();
   }, [activeLayer]);
+
+  // Render User My Location Marker when user location is active
+  useEffect(() => {
+    if (!mapInstance.current || !userLayerGroupRef.current) return;
+
+    userLayerGroupRef.current.clearLayers();
+
+    if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng) {
+      const lat = Number(userLocation.lat);
+      const lng = Number(userLocation.lng);
+
+      if (!isNaN(lat) && !isNaN(lng)) {
+        const userIconHtml = `
+          <div class="user-my-location-marker">
+            <div class="user-location-pulse"></div>
+            <div class="user-location-dot"></div>
+          </div>
+        `;
+
+        const userMarker = L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: 'user-marker-wrapper',
+            html: userIconHtml,
+            iconSize: [36, 36],
+            iconAnchor: [18, 18]
+          }),
+          zIndexOffset: 1200
+        });
+
+        userMarker.bindPopup(`
+          <div style="font-family: sans-serif; font-size: 13px; font-weight: 600; color: #0066FF; padding: 4px 6px; text-align: center;">
+            📍 Sizning joylashuvingiz
+          </div>
+        `);
+
+        userMarker.addTo(userLayerGroupRef.current);
+      }
+    }
+  }, [isUserLocationActive, userLocation]);
 
   // Clean up existing bus markers when selected route switches
   useEffect(() => {
@@ -566,23 +631,75 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
 
   // Center map on user GPS location
   const handleLocateMe = () => {
+    if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng && mapInstance.current) {
+      mapInstance.current.setView([Number(userLocation.lat), Number(userLocation.lng)], 16, { animate: true });
+      setToastMessage("Joylashuvingizga o'tildi");
+      setTimeout(() => setToastMessage(null), 1800);
+      return;
+    }
+
     if ("geolocation" in navigator && mapInstance.current) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const userLatLng = [pos.coords.latitude, pos.coords.longitude];
-          mapInstance.current.setView(userLatLng, 15);
+          mapInstance.current.setView(userLatLng, 16, { animate: true });
           
-          L.circleMarker(userLatLng, {
-            radius: 8,
-            fillColor: '#0066FF',
-            fillOpacity: 1,
-            color: '#ffffff',
-            weight: 3
-          }).addTo(layerGroupRef.current).bindPopup("Siz shu yerdasiz").openPopup();
+          if (userLayerGroupRef.current) {
+            userLayerGroupRef.current.clearLayers();
+            const userIconHtml = `
+              <div class="user-my-location-marker">
+                <div class="user-location-pulse"></div>
+                <div class="user-location-dot"></div>
+              </div>
+            `;
+            const marker = L.marker(userLatLng, {
+              icon: L.divIcon({
+                className: 'user-marker-wrapper',
+                html: userIconHtml,
+                iconSize: [36, 36],
+                iconAnchor: [18, 18]
+              }),
+              zIndexOffset: 1200
+            }).addTo(userLayerGroupRef.current);
+            marker.bindPopup(`
+              <div style="font-family: sans-serif; font-size: 13px; font-weight: 600; color: #0066FF; padding: 4px 6px; text-align: center;">
+                📍 Sizning joylashuvingiz
+              </div>
+            `).openPopup();
+          }
         },
         (err) => alert("Joylashuvingizni aniqlab bo'lmadi: " + err.message),
         { enableHighAccuracy: true }
       );
+    }
+  };
+
+  // Rotation controls: rotate left, rotate right, and reset bearing
+  const handleRotateLeft = () => {
+    if (!mapInstance.current || !mapInstance.current.setBearing) return;
+    const cur = mapInstance.current.getBearing ? mapInstance.current.getBearing() : 0;
+    const newB = (cur - 30 + 360) % 360;
+    mapInstance.current.setBearing(newB);
+    setCurrentBearing(Math.round(newB));
+  };
+
+  const handleRotateRight = () => {
+    if (!mapInstance.current || !mapInstance.current.setBearing) return;
+    const cur = mapInstance.current.getBearing ? mapInstance.current.getBearing() : 0;
+    const newB = (cur + 30) % 360;
+    mapInstance.current.setBearing(newB);
+    setCurrentBearing(Math.round(newB));
+  };
+
+  const handleCompassClick = () => {
+    if (!mapInstance.current) return;
+    if (currentBearing !== 0 && mapInstance.current.setBearing) {
+      mapInstance.current.setBearing(0);
+      setCurrentBearing(0);
+      setToastMessage("Shimolga to'g'rilandi (0°)");
+      setTimeout(() => setToastMessage(null), 1800);
+    } else {
+      handleResetView();
     }
   };
 
@@ -681,12 +798,23 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
           <Navigation size={18} color="#0066FF" />
         </button>
 
+        {/* Zoom Controls */}
         <div className="zoom-btn-group">
           <button className="map-ctrl-btn zoom-btn" onClick={handleZoomIn} title="Kattalashtirish (+)">
             <Plus size={18} color="#0f172a" />
           </button>
           <button className="map-ctrl-btn zoom-btn" onClick={handleZoomOut} title="Kichiklashtirish (-)">
             <Minus size={18} color="#0f172a" />
+          </button>
+        </div>
+
+        {/* Rotate Controls (O'ngga / Chapga aylantirish) */}
+        <div className="zoom-btn-group rotate-btn-group">
+          <button className="map-ctrl-btn zoom-btn" onClick={handleRotateLeft} title="Chapga aylantirish (↶)">
+            <RotateCcw size={16} color="#0f172a" />
+          </button>
+          <button className="map-ctrl-btn zoom-btn" onClick={handleRotateRight} title="O'ngga aylantirish (↷)">
+            <RotateCw size={16} color="#0f172a" />
           </button>
         </div>
 
@@ -700,10 +828,17 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
 
         <button 
           className="map-ctrl-btn" 
-          onClick={handleResetView} 
-          title="Marshrutni markazlashtirish"
+          onClick={handleCompassClick} 
+          title={currentBearing !== 0 ? `Shimolga to'g'rilash (${currentBearing}°)` : "Marshrutni markazlashtirish"}
         >
-          <Compass size={18} color="#0f172a" />
+          <Compass 
+            size={18} 
+            color={currentBearing !== 0 ? "#0066FF" : "#0f172a"}
+            style={{
+              transform: `rotate(${-currentBearing}deg)`,
+              transition: 'transform 0.2s ease-out'
+            }}
+          />
         </button>
       </div>
 

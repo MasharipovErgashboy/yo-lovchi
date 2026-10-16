@@ -85,6 +85,90 @@ function extractRoutePoints(route) {
   return [];
 }
 
+// Calculate bearing between two points
+function getBearing(lat1, lon1, lat2, lon2) {
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const y = Math.sin(dLon) * Math.cos((lat2 * Math.PI) / 180);
+  const x =
+    Math.cos((lat1 * Math.PI) / 180) * Math.sin((lat2 * Math.PI) / 180) -
+    Math.sin((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.cos(dLon);
+  const brng = (Math.atan2(y, x) * 180) / Math.PI;
+  return (brng + 360) % 360;
+}
+
+function getRouteSegmentBearing(driverLat, driverLng, polyPoints) {
+  if (!polyPoints || polyPoints.length < 2) return null;
+  let minDist = Infinity;
+  let bestBearing = 0;
+
+  for (let i = 0; i < polyPoints.length - 1; i++) {
+    const p1 = polyPoints[i];
+    const p2 = polyPoints[i + 1];
+    const d = getDistanceToSegment(driverLat, driverLng, p1[0], p1[1], p2[0], p2[1]);
+    if (d < minDist) {
+      minDist = d;
+      bestBearing = getBearing(p1[0], p1[1], p2[0], p2[1]);
+    }
+  }
+  return bestBearing;
+}
+
+// Calculates cumulative distance along the polyline from start to the projection of (pLat, pLng)
+function getRouteProgress(pLat, pLng, polyPoints) {
+  if (!polyPoints || polyPoints.length < 2) return 0;
+
+  let bestSegmentIndex = 0;
+  let bestT = 0;
+  let minPerpDistance = Infinity;
+
+  const cumDistances = [0];
+  for (let i = 0; i < polyPoints.length - 1; i++) {
+    const segLen = getDistanceMeters(
+      polyPoints[i][0], polyPoints[i][1],
+      polyPoints[i + 1][0], polyPoints[i + 1][1]
+    );
+    cumDistances.push(cumDistances[i] + segLen);
+  }
+
+  for (let i = 0; i < polyPoints.length - 1; i++) {
+    const aLat = polyPoints[i][0];
+    const aLng = polyPoints[i][1];
+    const bLat = polyPoints[i + 1][0];
+    const bLng = polyPoints[i + 1][1];
+
+    const latFactor = 111320;
+    const lonFactor = 111320 * Math.cos(((aLat + bLat) / 2 * Math.PI) / 180);
+
+    const px = (pLng - aLng) * lonFactor;
+    const py = (pLat - aLat) * latFactor;
+    const bx = (bLng - aLng) * lonFactor;
+    const by = (bLat - aLat) * latFactor;
+
+    const abLenSq = bx * bx + by * by;
+    let t = 0;
+    let perpDist = 0;
+    if (abLenSq === 0) {
+      perpDist = Math.sqrt(px * px + py * py);
+    } else {
+      t = Math.max(0, Math.min(1, (px * bx + py * by) / abLenSq));
+      const projX = t * bx;
+      const projY = t * by;
+      const dx = px - projX;
+      const dy = py - projY;
+      perpDist = Math.sqrt(dx * dx + dy * dy);
+    }
+
+    if (perpDist < minPerpDistance) {
+      minPerpDistance = perpDist;
+      bestSegmentIndex = i;
+      bestT = t;
+    }
+  }
+
+  const segLength = (cumDistances[bestSegmentIndex + 1] || cumDistances[bestSegmentIndex]) - cumDistances[bestSegmentIndex];
+  return cumDistances[bestSegmentIndex] + bestT * segLength;
+}
+
 export default function RouteList({ 
   onSelectRoute,
   isUserLocationActive = false,
@@ -289,20 +373,67 @@ export default function RouteList({
     let direction = 'ketmoqda';
     const polyPoints = extractRoutePoints(driverRoute);
     if (polyPoints.length >= 2 && driver.latitude && driver.longitude) {
-      const distToStart = getDistanceMeters(Number(driver.latitude), Number(driver.longitude), polyPoints[0][0], polyPoints[0][1]);
-      const distToEnd = getDistanceMeters(Number(driver.latitude), Number(driver.longitude), polyPoints[polyPoints.length - 1][0], polyPoints[polyPoints.length - 1][1]);
-      direction = distToStart <= distToEnd ? 'ketmoqda' : 'kelmoqda';
+      const dLat = Number(driver.latitude);
+      const dLng = Number(driver.longitude);
+      const heading = Number(driver.heading);
+      const routeBearing = getRouteSegmentBearing(dLat, dLng, polyPoints);
+
+      if (heading && !isNaN(heading) && (Number(driver.speed || 0) > 1 || heading > 0) && routeBearing !== null) {
+        let diff = Math.abs(heading - routeBearing) % 360;
+        if (diff > 180) diff = 360 - diff;
+        direction = diff < 90 ? 'ketmoqda' : 'kelmoqda';
+      } else {
+        const distToStart = getDistanceMeters(dLat, dLng, polyPoints[0][0], polyPoints[0][1]);
+        const distToEnd = getDistanceMeters(dLat, dLng, polyPoints[polyPoints.length - 1][0], polyPoints[polyPoints.length - 1][1]);
+        direction = distToStart <= distToEnd ? 'ketmoqda' : 'kelmoqda';
+      }
     }
 
-    // WHEN USER LOCATION IS ON: Calculate ETA to the USER directly!
-    if (isUserLocationActive && userLocation && driver.latitude && driver.longitude) {
+    // WHEN USER LOCATION IS ON: Calculate ETA and check if vehicle has already passed the user
+    let hasPassedUser = false;
+    if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng && driver.latitude && driver.longitude && polyPoints.length >= 2) {
+      const uLat = Number(userLocation.lat);
+      const uLng = Number(userLocation.lng);
+      const dLat = Number(driver.latitude);
+      const dLng = Number(driver.longitude);
+
+      const userProgress = getRouteProgress(uLat, uLng, polyPoints);
+      const vehProgress = getRouteProgress(dLat, dLng, polyPoints);
+
+      if (direction === 'ketmoqda') {
+        // Vehicle traveling from Start to End (increasing progress)
+        // If vehicle has passed user by more than 50 meters, it has already passed
+        if (vehProgress > (userProgress + 50)) {
+          hasPassedUser = true;
+        } else {
+          userDistMeters = Math.max(0, userProgress - vehProgress);
+        }
+      } else {
+        // Vehicle traveling from End to Start (decreasing progress)
+        // If vehicle has passed user towards start by more than 50 meters, it has already passed
+        if (vehProgress < (userProgress - 50)) {
+          hasPassedUser = true;
+        } else {
+          userDistMeters = Math.max(0, vehProgress - userProgress);
+        }
+      }
+
+      if (!hasPassedUser && userDistMeters !== null) {
+        // City travel time at ~380m/min
+        etaMinutes = Math.max(1, Math.round(userDistMeters / 380));
+        etaSubtitle = "sizgacha yetib keladi";
+        userDistanceText = userDistMeters >= 1000
+          ? `${(userDistMeters / 1000).toFixed(1)} km`
+          : `${Math.round(userDistMeters)} m`;
+      }
+    } else if (isUserLocationActive && userLocation && driver.latitude && driver.longitude) {
+      // Fallback if polyPoints < 2
       userDistMeters = getDistanceMeters(
         Number(driver.latitude),
         Number(driver.longitude),
         userLocation.lat,
         userLocation.lng
       );
-      // City travel time at ~380m/min with road curvature factor 1.25
       etaMinutes = Math.max(1, Math.round((userDistMeters * 1.25) / 380));
       etaSubtitle = "sizgacha yetib keladi";
       userDistanceText = userDistMeters >= 1000
@@ -329,28 +460,42 @@ export default function RouteList({
       userDistMeters,
       userDistanceText,
       isUserLocationActive,
+      hasPassedUser,
       direction,
       directionText: direction === 'ketmoqda' ? 'Ketmoqda' : 'Kelmoqda',
       directionColor: direction === 'ketmoqda' ? (driverRoute?.arrow_color_forward || '#0066FF') : (driverRoute?.arrow_color_backward || '#10B981')
     };
   }).filter(Boolean);
 
-  // Sort: When user location is active, sort by distance to user so the closest car arrives first (#1 Eng yaqin)
+  // Filter vehicles belonging to the current active route
+  const routeVehicles = activeRoute
+    ? processedVehicles.filter(v => v && v.routeId && String(v.routeId) === String(activeRoute.id))
+    : [];
+
+  // When user location is active: ONLY show vehicles that have NOT passed the user yet!
+  const forwardVehicles = routeVehicles
+    .filter(v => v.direction === 'ketmoqda')
+    .filter(v => !isUserLocationActive || !v.hasPassedUser);
+
+  const backwardVehicles = routeVehicles
+    .filter(v => v.direction === 'kelmoqda')
+    .filter(v => !isUserLocationActive || !v.hasPassedUser);
+
+  // Sort: When user location is active, sort by distance to user so the closest car arrives first (#1)
   // When location is off, sort by time to next stop
-  processedVehicles.sort((a, b) => {
+  forwardVehicles.sort((a, b) => {
     if (isUserLocationActive && a.userDistMeters != null && b.userDistMeters != null) {
       return a.userDistMeters - b.userDistMeters;
     }
     return a.etaMinutes - b.etaMinutes;
   });
 
-  // Filter vehicles belonging to the current active route
-  const routeVehicles = activeRoute
-    ? processedVehicles.filter(v => v && v.routeId && String(v.routeId) === String(activeRoute.id))
-    : [];
-
-  const forwardVehicles = routeVehicles.filter(v => v.direction === 'ketmoqda');
-  const backwardVehicles = routeVehicles.filter(v => v.direction === 'kelmoqda');
+  backwardVehicles.sort((a, b) => {
+    if (isUserLocationActive && a.userDistMeters != null && b.userDistMeters != null) {
+      return a.userDistMeters - b.userDistMeters;
+    }
+    return a.etaMinutes - b.etaMinutes;
+  });
 
   const displayedVehicles = selectedDirection === 'ketmoqda' ? forwardVehicles : backwardVehicles;
   const currentDirTitle = selectedDirection === 'ketmoqda' ? forwardDirTitle : backwardDirTitle;
@@ -495,9 +640,15 @@ export default function RouteList({
           <div className="empty-icon-wrap" style={{ background: '#f8fafc', width: '56px', height: '56px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Bus size={32} color="#94a3b8" />
           </div>
-          <h3>Ushbu yo'nalishda faol avtomobil yo'q</h3>
+          <h3>
+            {isUserLocationActive ? "Siz tomonga kelayotgan avtomobil yo'q" : "Ushbu yo'nalishda faol avtomobil yo'q"}
+          </h3>
           <p>
-            <strong>{currentDirTitle}</strong> yo'nalishida hozircha avtomobillar harakatlanmayapti.
+            {isUserLocationActive ? (
+              <span><strong>{currentDirTitle}</strong> yo'nalishida siz turgan joyga hali yetib kelmagan avtomobillar hozircha yo'q yoki o'tib ketgan.</span>
+            ) : (
+              <span><strong>{currentDirTitle}</strong> yo'nalishida hozircha avtomobillar harakatlanmayapti.</span>
+            )}
           </p>
           {otherVehiclesCount > 0 && (
             <button 
