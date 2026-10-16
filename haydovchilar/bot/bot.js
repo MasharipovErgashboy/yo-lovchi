@@ -6,7 +6,7 @@ const bot = new Telegraf(BOT_TOKEN);
 // In-memory mock database for drivers
 const driversDb = new Map(); // userId -> { name, surname, phone, status, pendingMessageId }
 
-const WEB_APP_URL = process.env.WEB_APP_URL || "https://driver.masharipov-ergashboy.uz";
+const WEB_APP_URL = process.env.WEB_APP_URL || "https://driver.yolovchiapp.uz";
 const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8008";
 
 // Helper to safely delete messages

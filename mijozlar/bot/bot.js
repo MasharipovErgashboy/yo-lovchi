@@ -6,7 +6,7 @@ const bot = new Telegraf('8910943568:AAHpGGEGLYm7KsB6df3AfOElAnN5TKBv5mo');
 // Diqqat: Telegram Mini App ishlashi uchun ilova HTTPS manzilga ega bo'lishi shart!
 // Hozircha loyiha local (localhost:5173) da ishlayotgani uchun, uni Vercel, Netlify 
 // yoki ngrok orqali internetga chiqarib, o'sha HTTPS ssilkani pastga yozishingiz kerak.
-const WEB_APP_URL = process.env.WEB_APP_URL || 'https://app.masharipov-ergashboy.uz';
+const WEB_APP_URL = process.env.WEB_APP_URL || 'https://app.yolovchiapp.uz';
 
 bot.start(async (ctx) => {
   await ctx.setChatMenuButton({ type: 'commands' }).catch(() => {});

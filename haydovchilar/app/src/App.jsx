@@ -349,7 +349,9 @@ function App() {
       if (!audioUrl) return;
 
       if (!audioUrl.startsWith('http')) {
-        if (window.location.hostname.includes('masharipov-ergashboy.uz')) {
+        if (window.location.hostname.includes('yolovchiapp.uz')) {
+          audioUrl = `https://api.yolovchiapp.uz${audioUrl}`;
+        } else if (window.location.hostname.includes('masharipov-ergashboy.uz')) {
           audioUrl = `https://api.masharipov-ergashboy.uz${audioUrl}`;
         } else {
           audioUrl = `${window.location.origin}${audioUrl}`;
