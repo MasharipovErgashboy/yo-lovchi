@@ -27,12 +27,6 @@
 
         var isInsideTelegram = isTgParam || hasProxy || hasInitData || isKnownPlatform;
 
-        if (!isInsideTelegram) {
-          // If opened in a regular browser outside Telegram, redirect to Driver Telegram Bot
-          window.location.replace("https://t.me/Car404bot");
-          return;
-        }
-
         try {
           if (tg) {
             tg.ready();
@@ -66,9 +60,7 @@
         } catch (e) {}
       })();
     </script>
-    <noscript>
-      <meta http-equiv="refresh" content="0;url=https://t.me/Car404bot" />
-    </noscript>
+
     <style>
       :root {
         --app-top-inset: max(
