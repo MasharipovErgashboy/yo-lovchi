@@ -220,6 +220,9 @@ const makeUserMarkerHtml = (heading = 0) => `
 
 export default function MapComponent({ 
   initialRouteId = null, 
+  onSelectRouteId,
+  selectedDirection: propDirection = 'ketmoqda',
+  setSelectedDirection: setPropDirection,
   onBackToRoutes,
   userLocation = null,
   isUserLocationActive = false
@@ -237,7 +240,14 @@ export default function MapComponent({
 
   const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
-  const [directionReversed, setDirectionReversed] = useState(false);
+  const [localDirection, setLocalDirection] = useState('ketmoqda');
+  
+  const currentDirection = propDirection !== undefined && propDirection !== null ? propDirection : localDirection;
+  const setCurrentDirection = (dir) => {
+    setLocalDirection(dir);
+    if (setPropDirection) setPropDirection(dir);
+  };
+
   const [liveDrivers, setLiveDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentStopIndex, setCurrentStopIndex] = useState(2); // e.g. 5-bekat (hozir)
@@ -247,9 +257,14 @@ export default function MapComponent({
   const [isSheetCollapsed, setIsSheetCollapsed] = useState(true);
   const [collapsedHeight, setCollapsedHeight] = useState(96);
   const [expandedHeight, setExpandedHeight] = useState(280);
+  const [nearestDriverState, setNearestDriverState] = useState(null);
+  const [visibleDriversCount, setVisibleDriversCount] = useState(0);
+
   const sheetRef = useRef(null);
   const lastFittedRouteId = useRef(null);
   const userHasMovedMap = useRef(false);
+  const hasAutoZoomedToNearest = useRef(false);
+  const nearestDriverRef = useRef(null);
 
   // Parse polyline points of selected route for direction calculation
   const routePolyPoints = React.useMemo(() => {
@@ -264,6 +279,34 @@ export default function MapComponent({
     }
     return [];
   }, [selectedRoute]);
+
+  // Direction endpoint titles (e.g. 3-kichik noxiya - Qibray)
+  const getStopName = (stop, fallback) => {
+    if (!stop) return fallback;
+    if (typeof stop === 'object') return stop.name || fallback;
+    return String(stop);
+  };
+
+  let startStopName = "Bosh bekat";
+  let endStopName = "Yakuniy bekat";
+
+  if (selectedRoute) {
+    const stops = Array.isArray(selectedRoute.stops) ? selectedRoute.stops : [];
+    if (stops.length >= 2) {
+      startStopName = getStopName(stops[0], "Bosh bekat");
+      endStopName = getStopName(stops[stops.length - 1], "Yakuniy bekat");
+    } else if (selectedRoute.direction) {
+      const parts = selectedRoute.direction.split(/[-→—]/).map(s => s.trim());
+      if (parts.length >= 2) {
+        startStopName = parts[0];
+        endStopName = parts[1];
+      }
+    }
+  }
+
+  const forwardDirTitle = `${startStopName} - ${endStopName}`;
+  const backwardDirTitle = `${endStopName} - ${startStopName}`;
+  const currentDirTitle = currentDirection === 'ketmoqda' ? forwardDirTitle : backwardDirTitle;
 
   // Measure bottom sheet dynamically to anchor controls smoothly above it
   useEffect(() => {
@@ -321,6 +364,22 @@ export default function MapComponent({
       setLoading(false);
     }
   };
+
+  // Sync selectedRoute if initialRouteId prop changes
+  useEffect(() => {
+    if (initialRouteId && routes.length > 0) {
+      const found = routes.find(r => String(r.id) === String(initialRouteId));
+      if (found && (!selectedRoute || String(selectedRoute.id) !== String(found.id))) {
+        setSelectedRoute(found);
+      }
+    }
+  }, [initialRouteId, routes]);
+
+  // When route or direction changes, reset auto-zoom flag to zoom to nearest car
+  useEffect(() => {
+    hasAutoZoomedToNearest.current = false;
+    userHasMovedMap.current = false;
+  }, [selectedRoute?.id, currentDirection]);
 
   // Ultra-fast real-time live drivers fetcher (no caching)
   const fetchLiveDrivers = async () => {
@@ -623,11 +682,16 @@ export default function MapComponent({
     if (lastFittedRouteId.current !== selectedRoute.id) {
       lastFittedRouteId.current = selectedRoute.id;
       userHasMovedMap.current = false;
-      const bounds = L.latLngBounds(polyPoints);
-      mapInstance.current.fitBounds(bounds, {
-        paddingTopLeft: [40, 40],
-        paddingBottomRight: [40, 260]
-      });
+      hasAutoZoomedToNearest.current = false;
+
+      // Only fit entire polyline if user location is NOT active
+      if (!isUserLocationActive || !userLocation) {
+        const bounds = L.latLngBounds(polyPoints);
+        mapInstance.current.fitBounds(bounds, {
+          paddingTopLeft: [40, 40],
+          paddingBottomRight: [40, isSheetCollapsed ? 120 : 260]
+        });
+      }
     }
 
   }, [selectedRoute, currentStopIndex]);
@@ -640,11 +704,125 @@ export default function MapComponent({
       d => d && d.route_id && selectedRoute && String(d.route_id) === String(selectedRoute.id) && d.is_online !== false
     );
 
-    const activeIds = new Set(routeDrivers.map(d => String(d.driver_id || d.id)));
+    // Compute progress, direction and ETA for each driver
+    const processedRouteDrivers = routeDrivers.map((driver, dIdx) => {
+      const lat = Number(driver.latitude);
+      const lng = Number(driver.longitude);
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return null;
 
-    // A. Remove markers for drivers who went offline or left this route
+      const existingState = busMarkersRef.current[String(driver.driver_id || driver.id)];
+      const direction = determineDriverDirection(driver, existingState, routePolyPoints, dIdx);
+
+      let hasPassedUser = false;
+      let userDistMeters = null;
+      let userDistanceText = null;
+      let etaMinutes = 3;
+
+      if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng && routePolyPoints.length >= 2) {
+        const uLat = Number(userLocation.lat);
+        const uLng = Number(userLocation.lng);
+        const userProgress = getRouteProgress(uLat, uLng, routePolyPoints);
+        const vehProgress = getRouteProgress(lat, lng, routePolyPoints);
+
+        if (direction === 'ketmoqda') {
+          if (vehProgress > (userProgress + 50)) {
+            hasPassedUser = true;
+          } else {
+            userDistMeters = Math.max(0, userProgress - vehProgress);
+          }
+        } else {
+          if (vehProgress < (userProgress - 50)) {
+            hasPassedUser = true;
+          } else {
+            userDistMeters = Math.max(0, vehProgress - userProgress);
+          }
+        }
+
+        if (!hasPassedUser && userDistMeters !== null) {
+          etaMinutes = Math.max(1, Math.round(userDistMeters / 380));
+          userDistanceText = userDistMeters >= 1000
+            ? `${(userDistMeters / 1000).toFixed(1)} km`
+            : `${Math.round(userDistMeters)} m`;
+        }
+      } else if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng) {
+        userDistMeters = getDistanceMeters(
+          Number(userLocation.lat),
+          Number(userLocation.lng),
+          lat,
+          lng
+        );
+        etaMinutes = Math.max(1, Math.round((userDistMeters * 1.25) / 380));
+        userDistanceText = userDistMeters >= 1000
+          ? `${(userDistMeters / 1000).toFixed(1)} km`
+          : `${Math.round(userDistMeters)} m`;
+      }
+
+      return {
+        ...driver,
+        direction,
+        hasPassedUser,
+        userDistMeters,
+        userDistanceText,
+        etaMinutes
+      };
+    }).filter(Boolean);
+
+    // Filter visible drivers: When user location is active, ONLY show vehicles in the selected direction that haven't passed the user
+    let visibleDrivers = processedRouteDrivers;
+    if (isUserLocationActive) {
+      visibleDrivers = processedRouteDrivers.filter(
+        d => d.direction === currentDirection && !d.hasPassedUser
+      );
+    }
+
+    setVisibleDriversCount(visibleDrivers.length);
+
+    // Find nearest vehicle to user among visible drivers
+    let nearest = null;
+    let minD = Infinity;
+    visibleDrivers.forEach(d => {
+      const dist = d.userDistMeters !== null && d.userDistMeters !== undefined
+        ? d.userDistMeters
+        : getDistanceMeters(Number(userLocation?.lat || 0), Number(userLocation?.lng || 0), Number(d.latitude), Number(d.longitude));
+      if (dist < minD) {
+        minD = dist;
+        nearest = d;
+      }
+    });
+
+    nearestDriverRef.current = nearest;
+    setNearestDriverState(nearest);
+
+    // Auto zoom smoothly to user + nearest vehicle when map opens or direction changes
+    if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng && mapInstance.current && !hasAutoZoomedToNearest.current && !userHasMovedMap.current) {
+      const uLat = Number(userLocation.lat);
+      const uLng = Number(userLocation.lng);
+
+      if (nearest && nearest.latitude && nearest.longitude) {
+        const dLat = Number(nearest.latitude);
+        const dLng = Number(nearest.longitude);
+        const bounds = L.latLngBounds([
+          [uLat, uLng],
+          [dLat, dLng]
+        ]);
+        mapInstance.current.fitBounds(bounds, {
+          paddingTopLeft: [70, 70],
+          paddingBottomRight: [70, isSheetCollapsed ? 140 : 280],
+          maxZoom: 16,
+          animate: true
+        });
+        hasAutoZoomedToNearest.current = true;
+      } else if (liveDrivers.length > 0) {
+        mapInstance.current.setView([uLat, uLng], 16, { animate: true });
+        hasAutoZoomedToNearest.current = true;
+      }
+    }
+
+    const visibleIds = new Set(visibleDrivers.map(d => String(d.driver_id || d.id)));
+
+    // A. Remove markers for drivers who went offline, left this route, or don't match active direction
     Object.keys(busMarkersRef.current).forEach(id => {
-      if (!activeIds.has(id)) {
+      if (!visibleIds.has(id)) {
         if (busMarkersRef.current[id]?.marker) {
           busMarkersRef.current[id].marker.remove();
         }
@@ -652,15 +830,14 @@ export default function MapComponent({
       }
     });
 
-    // B. Smoothly update existing markers or create new ones
-    routeDrivers.forEach((driver, dIdx) => {
+    // B. Smoothly update existing markers or create new ones for visible drivers
+    visibleDrivers.forEach((driver) => {
       const id = String(driver.driver_id || driver.id);
       const lat = Number(driver.latitude);
       const lng = Number(driver.longitude);
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
 
-      const existingState = busMarkersRef.current[id];
-      const direction = determineDriverDirection(driver, existingState, routePolyPoints, dIdx);
+      const direction = driver.direction;
       const isKetmoqda = direction === 'ketmoqda';
       
       const forwardColor = selectedRoute?.arrow_color_forward || '#0066FF';
@@ -670,7 +847,6 @@ export default function MapComponent({
 
       // Determine rotation angle for the arrow:
       // Strictly follows the road path in the direction of the route (Start -> End or End -> Start)
-      // Never wiggles or jumps based on mobile phone heading
       const routeBearing = getRouteSegmentBearing(lat, lng, routePolyPoints);
       let rotationAngle = 0;
       if (routeBearing !== null) {
@@ -695,6 +871,7 @@ export default function MapComponent({
           <div style="color: #64748b; font-size: 12px; margin-top: 2px;">
             ${driver.route_number || selectedRoute.number}-marshrut • <strong style="color: ${busColor};">${dirText}</strong>
           </div>
+          ${driver.userDistanceText ? `<div style="color: #0066FF; font-weight: 600; font-size: 12px; margin-top: 2px;">Sizgacha: ${driver.userDistanceText} (~${driver.etaMinutes} daq)</div>` : ''}
           <div style="color: ${capColor}; font-weight: 700; margin-top: 4px;">
             ${capText}
           </div>
@@ -759,9 +936,9 @@ export default function MapComponent({
       }
     });
 
-  }, [liveDrivers, selectedRoute, routePolyPoints]);
+  }, [liveDrivers, selectedRoute, routePolyPoints, isUserLocationActive, currentDirection, userLocation]);
 
-  // Center map on user GPS location
+  // Center map on user GPS location and nearest vehicle
   const handleLocateMe = () => {
     // Request device orientation permission on iOS if available
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -771,8 +948,24 @@ export default function MapComponent({
     }
 
     if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng && mapInstance.current) {
-      mapInstance.current.setView([Number(userLocation.lat), Number(userLocation.lng)], 16, { animate: true });
-      setToastMessage("Joylashuvingizga o'tildi");
+      const uLat = Number(userLocation.lat);
+      const uLng = Number(userLocation.lng);
+
+      if (nearestDriverRef.current && nearestDriverRef.current.latitude && nearestDriverRef.current.longitude) {
+        const dLat = Number(nearestDriverRef.current.latitude);
+        const dLng = Number(nearestDriverRef.current.longitude);
+        const bounds = L.latLngBounds([[uLat, uLng], [dLat, dLng]]);
+        mapInstance.current.fitBounds(bounds, {
+          paddingTopLeft: [70, 70],
+          paddingBottomRight: [70, isSheetCollapsed ? 140 : 280],
+          maxZoom: 16,
+          animate: true
+        });
+        setToastMessage("Siz va eng yaqin avtomobil ko'rsatildi");
+      } else {
+        mapInstance.current.setView([uLat, uLng], 16, { animate: true });
+        setToastMessage("Joylashuvingizga o'tildi");
+      }
       setTimeout(() => setToastMessage(null), 1800);
       return;
     }
@@ -832,17 +1025,15 @@ export default function MapComponent({
     }
   };
 
-  // Toggle route direction
+  // Toggle route direction and notify parent / re-zoom
   const handleReverseDirection = () => {
-    setDirectionReversed(prev => !prev);
-    if (selectedRoute) {
-      const parts = (selectedRoute.direction || '').split('→');
-      const newDir = parts.length === 2 ? `${parts[1].trim()} → ${parts[0].trim()}` : selectedRoute.direction;
-      setSelectedRoute({
-        ...selectedRoute,
-        direction: newDir
-      });
-    }
+    const nextDir = currentDirection === 'ketmoqda' ? 'kelmoqda' : 'ketmoqda';
+    setCurrentDirection(nextDir);
+    userHasMovedMap.current = false;
+    hasAutoZoomedToNearest.current = false;
+    const nextTitle = nextDir === 'ketmoqda' ? forwardDirTitle : backwardDirTitle;
+    setToastMessage(`Yo'nalish: ${nextTitle}`);
+    setTimeout(() => setToastMessage(null), 2000);
   };
 
   // Switch between routes if user has multiple routes
@@ -850,8 +1041,12 @@ export default function MapComponent({
     if (routes.length <= 1) return;
     const currentIndex = routes.findIndex(r => r.id === selectedRoute.id);
     const nextIndex = (currentIndex + 1) % routes.length;
-    setSelectedRoute(routes[nextIndex]);
-    setToastMessage(`${routes[nextIndex].name} ga o'tildi`);
+    const nextRoute = routes[nextIndex];
+    setSelectedRoute(nextRoute);
+    if (onSelectRouteId) {
+      onSelectRouteId(nextRoute.id);
+    }
+    setToastMessage(`${nextRoute.name} ga o'tildi`);
     setTimeout(() => setToastMessage(null), 2000);
   };
 
@@ -1033,12 +1228,12 @@ export default function MapComponent({
                   </span>
                 )}
               </h3>
-              <p className="sheet-route-direction">{selectedRoute.direction || ''}</p>
+              <p className="sheet-route-direction">{currentDirTitle}</p>
             </div>
 
             <div className="sheet-header-actions">
-              <button className="sheet-direction-btn" onClick={handleReverseDirection}>
-                <span>Yo'nalish</span>
+              <button className="sheet-direction-btn" onClick={handleReverseDirection} title="Yo'nalishni almashtirish">
+                <span>{currentDirection === 'ketmoqda' ? 'Ketmoqda' : 'Kelmoqda'}</span>
                 <ArrowLeftRight size={14} />
               </button>
 
@@ -1058,25 +1253,17 @@ export default function MapComponent({
             <div className="sheet-stats-grid">
               <div className="sheet-stat-card">
                 <div className="stat-card-title green">
-                  <Users size={16} />
+                  <Clock size={16} />
                   <span>
-                    {(() => {
-                      const firstDriver = liveDrivers.find(d => d && d.route_id && selectedRoute && String(d.route_id) === String(selectedRoute.id));
-                      if (!firstDriver) return "Harakatda emas";
-                      if (firstDriver.capacity === 'tola') return "To'la";
-                      if (firstDriver.capacity === 'ozroq') return "Ozroq joy";
-                      return "Bo'sh joy ko'p";
-                    })()}
+                    {nearestDriverState 
+                      ? `${nearestDriverState.etaMinutes || 1} daqiqa` 
+                      : (isUserLocationActive ? "Avtomobil yo'q" : "Harakatda")}
                   </span>
                 </div>
                 <div className="stat-card-subtitle">
-                  {(() => {
-                    const firstDriver = liveDrivers.find(d => d && d.route_id && selectedRoute && String(d.route_id) === String(selectedRoute.id));
-                    if (!firstDriver) return "Liniyada emas";
-                    if (firstDriver.capacity === 'tola') return "90–100%";
-                    if (firstDriver.capacity === 'ozroq') return "30–40%";
-                    return "60–70%";
-                  })()}
+                  {nearestDriverState 
+                    ? `Eng yaqin (${nearestDriverState.userDistanceText || ''})` 
+                    : (isUserLocationActive ? "Ushbu yo'nalishda" : "Liniyada")}
                 </div>
               </div>
 
@@ -1084,10 +1271,12 @@ export default function MapComponent({
                 <div className="stat-card-title">
                   <Bus size={16} />
                   <span>
-                    {liveDrivers.filter(d => d && d.route_id && selectedRoute && String(d.route_id) === String(selectedRoute.id)).length} ta avtobus
+                    {visibleDriversCount} ta avtobus
                   </span>
                 </div>
-                <div className="stat-card-subtitle">Harakatda</div>
+                <div className="stat-card-subtitle">
+                  {isUserLocationActive ? "Siz tomonga kelmoqda" : "Harakatda"}
+                </div>
               </div>
             </div>
           </div>

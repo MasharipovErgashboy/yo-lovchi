@@ -70,6 +70,7 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('marshrutlar') // 'marshrutlar' | 'xarita' | 'support'
   const [selectedRouteForMap, setSelectedRouteForMap] = useState(null)
+  const [selectedDirection, setSelectedDirection] = useState('ketmoqda') // 'ketmoqda' | 'kelmoqda'
   const [isUserLocationActive, setIsUserLocationActive] = useState(false)
   const [userLocation, setUserLocation] = useState(null)
   const [userDistanceToRoute, setUserDistanceToRoute] = useState(null)
@@ -88,8 +89,11 @@ function App() {
     }
   }, []);
 
-  const handleSelectRoute = (routeId) => {
+  const handleSelectRoute = (routeId, direction) => {
     setSelectedRouteForMap(routeId);
+    if (direction) {
+      setSelectedDirection(direction);
+    }
     setActiveTab('xarita');
   };
 
@@ -160,6 +164,10 @@ function App() {
           {activeTab === 'marshrutlar' && (
             <RouteList 
               onSelectRoute={handleSelectRoute}
+              selectedRouteId={selectedRouteForMap}
+              setSelectedRouteId={setSelectedRouteForMap}
+              selectedDirection={selectedDirection}
+              setSelectedDirection={setSelectedDirection}
               isUserLocationActive={isUserLocationActive}
               setIsUserLocationActive={setIsUserLocationActive}
               userLocation={userLocation}
@@ -171,6 +179,9 @@ function App() {
           {activeTab === 'xarita' && (
             <MapComponent 
               initialRouteId={selectedRouteForMap} 
+              onSelectRouteId={setSelectedRouteForMap}
+              selectedDirection={selectedDirection}
+              setSelectedDirection={setSelectedDirection}
               userLocation={userLocation}
               isUserLocationActive={isUserLocationActive}
             />

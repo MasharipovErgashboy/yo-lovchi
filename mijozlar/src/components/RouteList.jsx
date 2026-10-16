@@ -171,6 +171,10 @@ function getRouteProgress(pLat, pLng, polyPoints) {
 
 export default function RouteList({ 
   onSelectRoute,
+  selectedRouteId: propRouteId,
+  setSelectedRouteId: setPropRouteId,
+  selectedDirection: propDirection,
+  setSelectedDirection: setPropDirection,
   isUserLocationActive = false,
   setIsUserLocationActive,
   userLocation = null,
@@ -180,8 +184,15 @@ export default function RouteList({
 }) {
   const [routes, setRoutes] = useState([]);
   const [liveDrivers, setLiveDrivers] = useState([]);
-  const [selectedRouteId, setSelectedRouteId] = useState(null);
-  const [selectedDirection, setSelectedDirection] = useState('ketmoqda'); // 'ketmoqda' | 'kelmoqda'
+  const [localRouteId, setLocalRouteId] = useState(null);
+  const [localDirection, setLocalDirection] = useState('ketmoqda');
+
+  const selectedRouteId = propRouteId !== undefined && propRouteId !== null ? propRouteId : localRouteId;
+  const setSelectedRouteId = setPropRouteId || setLocalRouteId;
+
+  const selectedDirection = propDirection !== undefined && propDirection !== null ? propDirection : localDirection;
+  const setSelectedDirection = setPropDirection || setLocalDirection;
+
   const [loading, setLoading] = useState(true);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState(null);
@@ -648,7 +659,7 @@ export default function RouteList({
               routeColor={vehicle.routeColor}
               onSelectVehicle={(veh) => {
                 if (onSelectRoute) {
-                  onSelectRoute(veh.routeId);
+                  onSelectRoute(veh.routeId, veh.direction || selectedDirection);
                 }
               }}
             />
