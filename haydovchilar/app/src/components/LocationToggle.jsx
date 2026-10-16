@@ -333,25 +333,7 @@ export default function LocationToggle({
                   : "Sizning joylashuvingiz yo'lovchilarga ko'rinmaydi")}
           </p>
 
-          {!hasRoute && (
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: '#f1f5f9',
-              color: '#64748b',
-              border: '1px solid #cbd5e1',
-              padding: '5px 14px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: '600',
-              marginTop: '4px',
-              marginBottom: '10px'
-            }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#94a3b8' }}></span>
-              <span>Admin biriktirishi kutilmoqda</span>
-            </div>
-          )}
+
 
           {hasRoute && (
             <div style={{
