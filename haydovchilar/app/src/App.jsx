@@ -233,6 +233,8 @@ function App() {
               }
               return prev;
             });
+          } else {
+            setAssignedRoute(null);
           }
         }
       } catch (e) {
@@ -241,7 +243,7 @@ function App() {
     };
 
     checkStatus();
-    const interval = setInterval(checkStatus, 5000);
+    const interval = setInterval(checkStatus, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -309,6 +311,13 @@ function App() {
 
   // Location Toggle Handler (with immediate online/offline GPS signal)
   const handleLocationToggle = (newEnabled, currentPos = null) => {
+    if (newEnabled && !assignedRoute) {
+      isOnlineRef.current = false;
+      setLocationEnabled(false);
+      safeSetStorage('yolovchi_location_enabled', 'false');
+      return;
+    }
+
     isOnlineRef.current = newEnabled;
     setLocationEnabled(newEnabled);
     safeSetStorage('yolovchi_location_enabled', newEnabled ? 'true' : 'false');
@@ -603,7 +612,7 @@ function App() {
 
       {activeTab === 'profil' && (
         <div className="tab-content" style={{ padding: 0 }}>
-          <Profile />
+          <Profile assignedRoute={assignedRoute} />
         </div>
       )}
 

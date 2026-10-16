@@ -1025,12 +1025,19 @@ def assign_driver_to_route(driver_id: int, route_id: Optional[int]) -> bool:
     updated = cursor.fetchone()
     
     # Also update route_id in driver_locations if exists
-    if updated and route_id:
-        cursor.execute("""
-            UPDATE driver_locations
-            SET route_id = %s
-            WHERE driver_id = %s;
-        """, (route_id, driver_id))
+    if updated:
+        if route_id:
+            cursor.execute("""
+                UPDATE driver_locations
+                SET route_id = %s
+                WHERE driver_id = %s;
+            """, (route_id, driver_id))
+        else:
+            cursor.execute("""
+                UPDATE driver_locations
+                SET is_online = FALSE, route_id = NULL
+                WHERE driver_id = %s;
+            """, (driver_id,))
         
     conn.commit()
     cursor.close()

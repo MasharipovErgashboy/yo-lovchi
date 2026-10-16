@@ -76,6 +76,9 @@ export default function LocationToggle({
   const [checking, setChecking] = useState(false);
   const [distanceError, setDistanceError] = useState(null);
   const [gpsPromptModal, setGpsPromptModal] = useState(null); // 'turn_on' | 'turn_off' | null
+  const [noRouteModal, setNoRouteModal] = useState(false);
+
+  const hasRoute = Boolean(assignedRoute && assignedRoute.id);
 
   const openDeviceSettings = () => {
     const tg = window.Telegram?.WebApp;
@@ -235,6 +238,11 @@ export default function LocationToggle({
   }, [gpsPromptModal, assignedRoute]);
 
   const handleToggle = () => {
+    if (!hasRoute) {
+      setNoRouteModal(true);
+      return;
+    }
+
     const tg = window.Telegram?.WebApp;
     const lm = tg?.LocationManager;
 
@@ -268,14 +276,39 @@ export default function LocationToggle({
 
   return (
     <>
-      <div className={`location-card ${enabled ? 'is-active' : ''}`}>
+      <div className={`location-card ${enabled ? 'is-active' : ''} ${!hasRoute ? 'is-unassigned' : ''}`}>
         <div className="location-content">
-          <div className="pulse-icon-container">
-            <div className="pulse-circle-2">
-              <div className="pulse-circle-3">
+          <div 
+            className="pulse-icon-container"
+            style={{
+              background: !hasRoute 
+                ? 'rgba(156, 163, 175, 0.12)' 
+                : (enabled ? 'rgba(0, 102, 255, 0.08)' : 'rgba(0, 102, 255, 0.05)')
+            }}
+          >
+            <div 
+              className="pulse-circle-2"
+              style={{
+                background: !hasRoute 
+                  ? 'rgba(156, 163, 175, 0.18)' 
+                  : (enabled ? 'rgba(0, 102, 255, 0.15)' : 'rgba(0, 102, 255, 0.1)')
+              }}
+            >
+              <div 
+                className="pulse-circle-3"
+                style={{
+                  background: !hasRoute 
+                    ? 'rgba(156, 163, 175, 0.25)' 
+                    : (enabled ? 'rgba(0, 102, 255, 0.25)' : 'rgba(0, 102, 255, 0.2)')
+                }}
+              >
                 <div 
                   className="pulse-icon-inner" 
-                  style={{ backgroundColor: enabled ? 'var(--blue-primary)' : 'var(--text-secondary)' }}
+                  style={{ 
+                    backgroundColor: !hasRoute 
+                      ? '#9ca3af' 
+                      : (enabled ? 'var(--blue-primary)' : 'var(--text-secondary)') 
+                  }}
                 >
                   <Navigation 
                     size={20} 
@@ -288,23 +321,74 @@ export default function LocationToggle({
           </div>
           
           <h2 className="location-title">
-            {enabled ? "Joylashuv faol" : "Joylashuv o'chirilgan"}
+            {!hasRoute 
+              ? "Marshrut biriktirilmagan" 
+              : (enabled ? "Joylashuv faol" : "Joylashuv o'chirilgan")}
           </h2>
           <p className="location-desc">
-            {enabled 
-              ? "Sizning joylashuvingiz yo'lovchilarga real vaqtda ko'rinmoqda" 
-              : "Sizning joylashuvingiz yo'lovchilarga ko'rinmaydi"}
+            {!hasRoute 
+              ? "Administrator sizga marshrut biriktirgach, joylashuvni yoqishingiz mumkin" 
+              : (enabled 
+                  ? "Sizning joylashuvingiz yo'lovchilarga real vaqtda ko'rinmoqda" 
+                  : "Sizning joylashuvingiz yo'lovchilarga ko'rinmaydi")}
           </p>
+
+          {!hasRoute && (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: '#f1f5f9',
+              color: '#64748b',
+              border: '1px solid #cbd5e1',
+              padding: '5px 14px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: '600',
+              marginTop: '4px',
+              marginBottom: '10px'
+            }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#94a3b8' }}></span>
+              <span>Admin biriktirishi kutilmoqda</span>
+            </div>
+          )}
+
+          {hasRoute && (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(0, 102, 255, 0.08)',
+              color: 'var(--blue-primary)',
+              border: '1px solid rgba(0, 102, 255, 0.2)',
+              padding: '5px 14px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: '600',
+              marginTop: '4px',
+              marginBottom: '10px'
+            }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--blue-primary)' }}></span>
+              <span>{assignedRoute.number}-marshrut • {assignedRoute.name || "Faol"}</span>
+            </div>
+          )}
           
           <button 
             className="btn-primary" 
             onClick={handleToggle}
             disabled={checking}
             style={{ 
-              backgroundColor: enabled ? 'var(--red)' : 'var(--blue-primary)',
-              opacity: checking ? 0.7 : 1,
+              backgroundColor: !hasRoute 
+                ? '#94a3b8' 
+                : (enabled ? 'var(--red)' : 'var(--blue-primary)'),
+              opacity: checking ? 0.7 : (!hasRoute ? 0.85 : 1),
+              cursor: !hasRoute ? 'not-allowed' : 'pointer',
+              boxShadow: !hasRoute 
+                ? 'none' 
+                : (enabled ? '0 4px 14px rgba(239, 68, 68, 0.35)' : '0 4px 14px rgba(0, 102, 255, 0.35)'),
               marginTop: '8px',
-              marginBottom: '4px'
+              marginBottom: '4px',
+              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
             }}
           >
             <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />
@@ -424,6 +508,40 @@ export default function LocationToggle({
             >
               <span>Ketdik</span>
               <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* No Route Assigned Guidance Modal */}
+      {noRouteModal && (
+        <div className="driver-modal-overlay" onClick={() => setNoRouteModal(false)}>
+          <div className="driver-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="driver-modal-close" onClick={() => setNoRouteModal(false)}>
+              <X size={20} />
+            </button>
+            <div className="driver-modal-icon-wrap" style={{ background: 'rgba(100, 116, 139, 0.15)', color: '#64748b' }}>
+              <Navigation size={36} color="#64748b" style={{ transform: 'rotate(45deg)' }} />
+            </div>
+            <h3 className="driver-modal-title">Marshrut biriktirilmagan</h3>
+            <p className="driver-modal-desc">
+              Sizga hali administrator tomonidan marshrut biriktirilmagan. Admin panelda sizga marshrut biriktirilishi bilan ushbu tugma avtomatik tarzda <strong>ko'k rangda faollashadi</strong>.
+            </p>
+            <button 
+              className="btn-primary" 
+              onClick={() => setNoRouteModal(false)}
+              style={{ 
+                marginTop: '16px', 
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '16px',
+                fontWeight: '700',
+                backgroundColor: '#64748b'
+              }}
+            >
+              Tushunarli
             </button>
           </div>
         </div>

@@ -336,18 +336,6 @@ def check_driver_status(
     assigned_route = None
     if candidate.get("assigned_route_id"):
         assigned_route = get_route_by_id(candidate["assigned_route_id"])
-    
-    # If no route is assigned yet, check active routes and assign to the first active route
-    if not assigned_route:
-        all_routes = get_routes(active_only=True)
-        if all_routes:
-            first_route = all_routes[0]
-            assign_driver_to_route(candidate["id"], first_route["id"])
-            assigned_route = first_route
-            candidate["assigned_route_id"] = first_route["id"]
-            candidate["route_number"] = first_route.get("number")
-            candidate["route_name"] = first_route.get("name")
-            candidate["route_color"] = first_route.get("color")
 
     return {
         "status": "approved",
@@ -584,6 +572,13 @@ async def update_location(payload: DriverLocationUpdate):
 
     driver_id = target_driver["id"]
     target_route_id = payload.route_id or target_driver.get("assigned_route_id")
+
+    if not target_route_id:
+        return {
+            "success": False,
+            "no_route": True,
+            "message": "Sizga hali marshrut biriktirilmagan. Iltimos, admin marshrut biriktirishini kuting."
+        }
 
     # Check if driver was already actively working on the route
     current_loc = get_driver_location(driver_id)

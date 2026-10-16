@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { User, Bus, Headphones, ChevronRight, X, Phone, Send, CheckCircle2 } from 'lucide-react'
 
-export default function Profile() {
+export default function Profile({ assignedRoute }) {
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [helpMessage, setHelpMessage] = useState('');
   const [messageSent, setMessageSent] = useState(false);
@@ -31,9 +31,12 @@ export default function Profile() {
   }, []);
 
   const routeName = useMemo(() => {
+    if (assignedRoute) {
+      return `${assignedRoute.number}-marshrut • ${assignedRoute.name || ''}`;
+    }
     const params = new URLSearchParams(window.location.search);
     return params.get('route') || localStorage.getItem('yolovchi_driver_route') || "Biriktirilmagan";
-  }, []);
+  }, [assignedRoute]);
 
   const [isSendingHelp, setIsSendingHelp] = useState(false);
 
