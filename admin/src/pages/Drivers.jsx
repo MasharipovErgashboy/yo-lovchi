@@ -57,7 +57,8 @@ export default function Drivers() {
       if (res.ok) {
         const apiDrivers = await res.json();
         const formatted = (apiDrivers || []).map(d => {
-          const isOnline = Boolean(d.is_online);
+          const hasAssignedRoute = Boolean(d.assigned_route_id);
+          const isOnline = Boolean(d.is_online) && hasAssignedRoute;
 
           // Real shift start time
           let startTime = 'Boshlanmagan';

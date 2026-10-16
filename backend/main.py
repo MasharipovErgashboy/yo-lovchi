@@ -582,6 +582,7 @@ async def update_location(payload: DriverLocationUpdate):
     target_route_id = payload.route_id or target_driver.get("assigned_route_id")
 
     if not target_route_id:
+        set_driver_offline(driver_id)
         return {
             "success": False,
             "no_route": True,
@@ -596,10 +597,8 @@ async def update_location(payload: DriverLocationUpdate):
     if target_route_id and payload.latitude and payload.longitude:
         dist_meters = calculate_distance_to_route_polyline(payload.latitude, payload.longitude, target_route_id)
         if dist_meters is not None and dist_meters > 1000.0:
+            set_driver_offline(driver_id)
             if was_active_on_work:
-                # 1. Turn driver offline immediately in DB (removes vehicle from passenger app)
-                set_driver_offline(driver_id)
-
                 warning_title = "Marshrutdan chetlanish"
                 warning_msg = (
                     "Siz belgilangan marshrut chizig'idan 1 km dan ortiq uzoqlashdingiz. "
@@ -641,13 +640,12 @@ async def update_location(payload: DriverLocationUpdate):
                 }
             else:
                 # Driver hasn't started active work on route yet (at home or far from route)
-                # DO NOT send Telegram alert or save deviation messages!
                 return {
                     "success": False,
                     "deviated": False,
                     "out_of_route": True,
                     "distance_meters": round(dist_meters, 1),
-                    "message": "Joylashuvni yoqish uchun avval marshrut boshlanish nuqtasiga yoki marshrut chizig'iga yaqinlashing.",
+                    "message": "Joylashuvni yoqish uchun avval marshrut chizig'iga 1 km yaqinlashing.",
                     "driver_id": driver_id
                 }
 

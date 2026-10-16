@@ -213,9 +213,21 @@ function App() {
             if (data.driver.id) safeSetStorage('yolovchi_driver_id', data.driver.id);
             if (data.driver.phone) safeSetStorage('yolovchi_driver_phone', data.driver.phone);
             if (data.driver.telegram_id) safeSetStorage('yolovchi_driver_tg_id', data.driver.telegram_id);
+          }
 
-            // Sync online state with database
-            if (data.driver.is_online) {
+          const hasAssignedRoute = Boolean(data && data.assigned_route && data.assigned_route.id);
+
+          if (hasAssignedRoute) {
+            setAssignedRoute(prev => {
+              if (!prev) return data.assigned_route;
+              if (prev.id !== data.assigned_route.id || prev.updated_at !== data.assigned_route.updated_at) {
+                return data.assigned_route;
+              }
+              return prev;
+            });
+
+            // Sync online state with database (only valid if assigned route exists)
+            if (data.driver && data.driver.is_online) {
               setLocationEnabled(true);
               isOnlineRef.current = true;
               safeSetStorage('yolovchi_location_enabled', 'true');
@@ -224,17 +236,12 @@ function App() {
               isOnlineRef.current = false;
               safeSetStorage('yolovchi_location_enabled', 'false');
             }
-          }
-          if (data && data.assigned_route) {
-            setAssignedRoute(prev => {
-              if (!prev) return data.assigned_route;
-              if (prev.id !== data.assigned_route.id || prev.updated_at !== data.assigned_route.updated_at) {
-                return data.assigned_route;
-              }
-              return prev;
-            });
           } else {
+            // Unassigned driver: MUST be offline and button disabled in grey
             setAssignedRoute(null);
+            setLocationEnabled(false);
+            isOnlineRef.current = false;
+            safeSetStorage('yolovchi_location_enabled', 'false');
           }
         }
       } catch (e) {

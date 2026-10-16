@@ -242,7 +242,9 @@ export default function RouteList({
     let userDistMeters = null;
     let userDistanceText = null;
 
-    const driverRoute = routes.find(r => String(r.id) === String(driver.route_id)) || activeRoute;
+    if (!driver || !driver.route_id) return null;
+    const driverRoute = routes.find(r => String(r.id) === String(driver.route_id));
+    if (!driverRoute) return null;
     const stops = driverRoute && Array.isArray(driverRoute.stops) ? driverRoute.stops : [];
 
     if (stops.length > 0 && driver.latitude && driver.longitude) {
@@ -331,7 +333,7 @@ export default function RouteList({
       directionText: direction === 'ketmoqda' ? 'Ketmoqda' : 'Kelmoqda',
       directionColor: direction === 'ketmoqda' ? (driverRoute?.arrow_color_forward || '#0066FF') : (driverRoute?.arrow_color_backward || '#10B981')
     };
-  });
+  }).filter(Boolean);
 
   // Sort: When user location is active, sort by distance to user so the closest car arrives first (#1 Eng yaqin)
   // When location is off, sort by time to next stop
@@ -344,8 +346,8 @@ export default function RouteList({
 
   // Filter vehicles belonging to the current active route
   const routeVehicles = activeRoute
-    ? processedVehicles.filter(v => String(v.routeId) === String(activeRoute.id))
-    : processedVehicles;
+    ? processedVehicles.filter(v => v && v.routeId && String(v.routeId) === String(activeRoute.id))
+    : [];
 
   const forwardVehicles = routeVehicles.filter(v => v.direction === 'ketmoqda');
   const backwardVehicles = routeVehicles.filter(v => v.direction === 'kelmoqda');

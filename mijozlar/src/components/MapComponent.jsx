@@ -438,7 +438,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
     if (!mapInstance.current || !busLayerGroupRef.current || !selectedRoute) return;
 
     const routeDrivers = (liveDrivers || []).filter(
-      d => String(d.route_id) === String(selectedRoute.id) && d.is_online !== false
+      d => d && d.route_id && selectedRoute && String(d.route_id) === String(selectedRoute.id) && d.is_online !== false
     );
 
     const activeIds = new Set(routeDrivers.map(d => String(d.driver_id || d.id)));
@@ -797,7 +797,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
                   <Users size={16} />
                   <span>
                     {(() => {
-                      const firstDriver = liveDrivers.find(d => String(d.route_id) === String(selectedRoute.id));
+                      const firstDriver = liveDrivers.find(d => d && d.route_id && selectedRoute && String(d.route_id) === String(selectedRoute.id));
                       if (!firstDriver) return "Harakatda emas";
                       if (firstDriver.capacity === 'tola') return "To'la";
                       if (firstDriver.capacity === 'ozroq') return "Ozroq joy";
@@ -807,7 +807,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
                 </div>
                 <div className="stat-card-subtitle">
                   {(() => {
-                    const firstDriver = liveDrivers.find(d => String(d.route_id) === String(selectedRoute.id));
+                    const firstDriver = liveDrivers.find(d => d && d.route_id && selectedRoute && String(d.route_id) === String(selectedRoute.id));
                     if (!firstDriver) return "Liniyada emas";
                     if (firstDriver.capacity === 'tola') return "90–100%";
                     if (firstDriver.capacity === 'ozroq') return "30–40%";
@@ -820,7 +820,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
                 <div className="stat-card-title">
                   <Bus size={16} />
                   <span>
-                    {liveDrivers.filter(d => String(d.route_id) === String(selectedRoute.id)).length} ta avtobus
+                    {liveDrivers.filter(d => d && d.route_id && selectedRoute && String(d.route_id) === String(selectedRoute.id)).length} ta avtobus
                   </span>
                 </div>
                 <div className="stat-card-subtitle">Harakatda</div>

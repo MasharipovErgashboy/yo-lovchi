@@ -335,7 +335,9 @@ def get_candidates(status: Optional[str] = None) -> List[Dict[str, Any]]:
     for r in rows:
         loc_updated = r.get("location_updated_at")
         dl_online = r.get("dl_is_online")
-        is_online = bool(dl_online)
+        assigned_route_id = r.get("assigned_route_id")
+        # An unassigned driver can NEVER be online
+        is_online = bool(dl_online) if assigned_route_id else False
 
         d = format_row(r)
         d["is_online"] = is_online
@@ -381,7 +383,8 @@ def get_candidate_by_id(candidate_id: int) -> Optional[Dict[str, Any]]:
         return None
 
     dl_online = row.get("dl_is_online")
-    is_online = bool(dl_online)
+    assigned_route_id = row.get("assigned_route_id")
+    is_online = bool(dl_online) if assigned_route_id else False
 
     d = format_row(row)
     d["is_online"] = is_online
@@ -425,7 +428,8 @@ def get_candidate_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
         return None
 
     dl_online = row.get("dl_is_online")
-    is_online = bool(dl_online)
+    assigned_route_id = row.get("assigned_route_id")
+    is_online = bool(dl_online) if assigned_route_id else False
 
     d = format_row(row)
     d["is_online"] = is_online
@@ -509,7 +513,8 @@ def get_candidate_by_phone(phone: str) -> Optional[Dict[str, Any]]:
     if not row:
         return None
     d = format_row(row)
-    d["is_online"] = bool(row.get("dl_is_online"))
+    assigned_route_id = row.get("assigned_route_id")
+    d["is_online"] = bool(row.get("dl_is_online")) if assigned_route_id else False
     return d
 
 def save_message(
@@ -1307,6 +1312,17 @@ def update_driver_location(
         if cand:
             target_route_id = cand.get("assigned_route_id")
 
+    if not target_route_id:
+        cursor.execute("""
+            UPDATE driver_locations
+            SET is_online = false, active_on_route = false, route_id = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE driver_id = %s;
+        """, (driver_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {}
+
     cursor.execute("""
         INSERT INTO driver_locations (
             driver_id, route_id, latitude, longitude, heading, speed, capacity,
@@ -1385,12 +1401,14 @@ def get_live_drivers_for_route(route_id: int) -> List[Dict[str, Any]]:
                r.number as route_number, r.name as route_name, r.color as route_color, r.stops as route_stops, r.polyline as route_polyline
         FROM driver_locations dl
         JOIN candidates c ON dl.driver_id = c.id
-        LEFT JOIN routes r ON dl.route_id = r.id
+        JOIN routes r ON dl.route_id = r.id AND c.assigned_route_id = r.id
         WHERE dl.route_id = %s 
           AND dl.is_online = true 
           AND c.status = 'approved'
+          AND c.assigned_route_id = %s
+          AND r.is_active = true
         ORDER BY dl.updated_at DESC;
-    """, (route_id,))
+    """, (route_id, route_id))
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -1405,9 +1423,12 @@ def get_all_live_drivers() -> List[Dict[str, Any]]:
                r.number as route_number, r.name as route_name, r.color as route_color, r.stops as route_stops, r.polyline as route_polyline
         FROM driver_locations dl
         JOIN candidates c ON dl.driver_id = c.id
-        LEFT JOIN routes r ON dl.route_id = r.id
+        JOIN routes r ON dl.route_id = r.id AND c.assigned_route_id = r.id
         WHERE dl.is_online = true 
           AND c.status = 'approved'
+          AND c.assigned_route_id IS NOT NULL
+          AND dl.route_id IS NOT NULL
+          AND r.is_active = true
         ORDER BY dl.updated_at DESC;
     """)
     rows = cursor.fetchall()
@@ -1427,13 +1448,15 @@ def get_dashboard_stats() -> Dict[str, Any]:
     row = cursor.fetchone()
     total_drivers = row.get("count", 0) if row else 0
 
-    # 2. Online drivers (is_online = true)
+    # 2. Online drivers (is_online = true AND assigned to a route)
     cursor.execute("""
         SELECT COUNT(DISTINCT dl.driver_id) as count
         FROM driver_locations dl
         JOIN candidates c ON dl.driver_id = c.id
         WHERE c.status = 'approved'
-          AND dl.is_online = true;
+          AND dl.is_online = true
+          AND c.assigned_route_id IS NOT NULL
+          AND dl.route_id IS NOT NULL;
     """)
     row = cursor.fetchone()
     online_drivers = row.get("count", 0) if row else 0
@@ -1448,6 +1471,7 @@ def get_dashboard_stats() -> Dict[str, Any]:
         JOIN candidates c ON dl.driver_id = c.id
         WHERE c.status = 'approved'
           AND dl.is_online = true 
+          AND c.assigned_route_id IS NOT NULL
           AND dl.route_id IS NOT NULL;
     """)
     row = cursor.fetchone()
