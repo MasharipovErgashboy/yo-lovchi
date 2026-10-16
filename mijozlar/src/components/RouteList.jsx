@@ -21,6 +21,7 @@ export default function RouteList({ onSelectRoute }) {
   const [routes, setRoutes] = useState([]);
   const [liveDrivers, setLiveDrivers] = useState([]);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
+  const [selectedDirection, setSelectedDirection] = useState('ketmoqda'); // 'ketmoqda' | 'kelmoqda'
   const [loading, setLoading] = useState(true);
 
   const fetchRoutes = async () => {
@@ -69,7 +70,33 @@ export default function RouteList({ onSelectRoute }) {
     );
   }
 
-  const activeRoute = routes[0];
+  const activeRoute = (selectedRouteId && routes.find(r => r.id === selectedRouteId)) || routes[0];
+
+  const getStopName = (stop, fallback) => {
+    if (!stop) return fallback;
+    if (typeof stop === 'object') return stop.name || fallback;
+    return String(stop);
+  };
+
+  let startStopName = "Bosh bekat";
+  let endStopName = "Yakuniy bekat";
+
+  if (activeRoute) {
+    const stops = Array.isArray(activeRoute.stops) ? activeRoute.stops : [];
+    if (stops.length >= 2) {
+      startStopName = getStopName(stops[0], "Bosh bekat");
+      endStopName = getStopName(stops[stops.length - 1], "Yakuniy bekat");
+    } else if (activeRoute.direction) {
+      const parts = activeRoute.direction.split(/[-→—]/).map(s => s.trim());
+      if (parts.length >= 2) {
+        startStopName = parts[0];
+        endStopName = parts[1];
+      }
+    }
+  }
+
+  const forwardDirTitle = `${startStopName} - ${endStopName}`;
+  const backwardDirTitle = `${endStopName} - ${startStopName}`;
 
   // Calculate detailed vehicle info and arrival ETA for all active drivers
   const processedVehicles = (liveDrivers || []).map(driver => {
@@ -152,12 +179,89 @@ export default function RouteList({ onSelectRoute }) {
   // Sort: Eng tez kelayotgani birinchi chiqadi tepada!
   processedVehicles.sort((a, b) => a.etaMinutes - b.etaMinutes);
 
+  // Filter vehicles belonging to the current active route
+  const routeVehicles = activeRoute
+    ? processedVehicles.filter(v => String(v.routeId) === String(activeRoute.id))
+    : processedVehicles;
+
+  const forwardVehicles = routeVehicles.filter(v => v.direction === 'ketmoqda');
+  const backwardVehicles = routeVehicles.filter(v => v.direction === 'kelmoqda');
+
+  const displayedVehicles = selectedDirection === 'ketmoqda' ? forwardVehicles : backwardVehicles;
+  const currentDirTitle = selectedDirection === 'ketmoqda' ? forwardDirTitle : backwardDirTitle;
+  const otherVehiclesCount = selectedDirection === 'ketmoqda' ? backwardVehicles.length : forwardVehicles.length;
+  const otherDirTitle = selectedDirection === 'ketmoqda' ? backwardDirTitle : forwardDirTitle;
+
   return (
     <div className="vehicles-page-container">
-      {/* Vehicles List (Sorted by ETA ascending) */}
-      {processedVehicles.length > 0 ? (
+      {/* Route Switcher if multiple routes exist */}
+      {routes.length > 1 && (
+        <div className="route-switcher-bar">
+          {routes.map(r => (
+            <button 
+              key={r.id}
+              type="button"
+              className={`route-tab-pill ${r.id === activeRoute?.id ? 'active' : ''}`}
+              onClick={() => setSelectedRouteId(r.id)}
+            >
+              <span className="pill-num" style={{ background: r.color || '#0066FF' }}>{r.number}</span>
+              <span>{r.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Direction Switcher: 1-bo'lim (Boshlanish -> Yakuniy) va 2-bo'lim (Yakuniy -> Boshlanish) */}
+      <div className="direction-switcher-container">
+        <button 
+          type="button"
+          className={`direction-tab-btn ${selectedDirection === 'ketmoqda' ? 'active' : ''}`}
+          onClick={() => setSelectedDirection('ketmoqda')}
+          style={{
+            '--dir-color': activeRoute?.arrow_color_forward || '#0066FF'
+          }}
+        >
+          <div className="direction-tab-indicator">
+            <svg width="15" height="15" viewBox="0 0 32 32">
+              <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={activeRoute?.arrow_color_forward || '#0066FF'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <div className="direction-tab-content">
+            <span className="direction-tab-title">{forwardDirTitle}</span>
+            <span className="direction-tab-sub">Ketmoqda</span>
+          </div>
+          <span className="direction-tab-badge">
+            {forwardVehicles.length}
+          </span>
+        </button>
+
+        <button 
+          type="button"
+          className={`direction-tab-btn ${selectedDirection === 'kelmoqda' ? 'active' : ''}`}
+          onClick={() => setSelectedDirection('kelmoqda')}
+          style={{
+            '--dir-color': activeRoute?.arrow_color_backward || '#10B981'
+          }}
+        >
+          <div className="direction-tab-indicator" style={{ transform: 'rotate(180deg)' }}>
+            <svg width="15" height="15" viewBox="0 0 32 32">
+              <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={activeRoute?.arrow_color_backward || '#10B981'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <div className="direction-tab-content">
+            <span className="direction-tab-title">{backwardDirTitle}</span>
+            <span className="direction-tab-sub">Kelmoqda</span>
+          </div>
+          <span className="direction-tab-badge">
+            {backwardVehicles.length}
+          </span>
+        </button>
+      </div>
+
+      {/* Vehicles List (Filtered by selected direction) */}
+      {displayedVehicles.length > 0 ? (
         <div className="vehicles-list-grid">
-          {processedVehicles.map((vehicle, idx) => (
+          {displayedVehicles.map((vehicle, idx) => (
             <VehicleCard
               key={vehicle.driverId || idx}
               rank={idx + 1}
@@ -172,14 +276,24 @@ export default function RouteList({ onSelectRoute }) {
           ))}
         </div>
       ) : (
-        <div className="vehicles-empty-card">
-          <div className="empty-icon-wrap">
-            <Bus size={38} color="#94a3b8" />
+        <div className="direction-empty-card">
+          <div className="empty-icon-wrap" style={{ background: '#f8fafc', width: '56px', height: '56px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Bus size={32} color="#94a3b8" />
           </div>
-          <h3>Hozirda bu marshrutda faol avtomobillar yo'q</h3>
+          <h3>Ushbu yo'nalishda faol avtomobil yo'q</h3>
           <p>
-            Haydovchilar liniyaga chiqib, o'z ilovasida joylashuvni yoqishi bilan bu yerda real vaqtda paydo bo'ladi.
+            <strong>{currentDirTitle}</strong> yo'nalishida hozircha avtomobillar harakatlanmayapti.
           </p>
+          {otherVehiclesCount > 0 && (
+            <button 
+              type="button"
+              className="direction-switch-hint-btn"
+              onClick={() => setSelectedDirection(selectedDirection === 'ketmoqda' ? 'kelmoqda' : 'ketmoqda')}
+            >
+              <span>{otherDirTitle} ({otherVehiclesCount} ta faol)</span>
+              ➔
+            </button>
+          )}
         </div>
       )}
     </div>
