@@ -30,13 +30,22 @@
 
 /* Header */
 .header-container {
-  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 12px;
+  min-height: 54px;
+}
+.header-left {
+  flex-shrink: 0;
 }
 .header-title {
   font-size: 28px;
   font-weight: 700;
   color: var(--text-primary);
   margin-bottom: 4px;
+  line-height: 1.15;
 }
 .header-status {
   display: flex;
@@ -51,6 +60,92 @@
   height: 8px;
   background-color: var(--green);
   border-radius: 50%;
+}
+
+/* Compact Stop Audio Announcement Card next to Joylashuv title */
+.header-stop-announcement-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #10B981, #059669);
+  color: #ffffff;
+  padding: 6px 10px 6px 8px;
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  max-width: 195px;
+  min-width: 0;
+  animation: slideInAnnouncement 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+@keyframes slideInAnnouncement {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+  }
+}
+
+.announcement-pulse-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.announcement-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.announcement-tag {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+  opacity: 0.9;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.announcement-stop-name {
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 115px;
+}
+
+.announcement-close-btn {
+  background: rgba(255, 255, 255, 0.22);
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 2px;
+  transition: background 0.2s;
+}
+
+.announcement-close-btn:hover {
+  background: rgba(255, 255, 255, 0.38);
 }
 
 /* Location Toggle */

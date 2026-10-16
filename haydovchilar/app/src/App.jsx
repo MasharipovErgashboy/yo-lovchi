@@ -387,6 +387,14 @@ function App() {
     }
   };
 
+  const handleStopAnnouncement = () => {
+    if (currentAudioRef.current) {
+      try { currentAudioRef.current.pause(); } catch (e) {}
+      currentAudioRef.current = null;
+    }
+    setPlayingStopAnnouncement(null);
+  };
+
   // Location Toggle Handler (with immediate online/offline GPS signal)
   const handleLocationToggle = (newEnabled, currentPos = null) => {
     if (newEnabled && !assignedRoute) {
@@ -664,7 +672,11 @@ function App() {
     <div className="app-container">
       {activeTab === 'joylashuv' && (
         <div className={`tab-content joylashuv-tab ${subTab === 'xarita' ? 'is-map-view' : ''}`}>
-          <Header assignedRoute={assignedRoute} />
+          <Header 
+            assignedRoute={assignedRoute} 
+            playingStopAnnouncement={playingStopAnnouncement}
+            onStopAnnouncement={handleStopAnnouncement}
+          />
           
           {/* Subtabs Switcher: Joylashuv vs Xarita */}
           <div className="driver-subtabs-bar">
@@ -795,73 +807,6 @@ function App() {
               Tushunarli
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Real-time Stop Audio Announcement Banner */}
-      {playingStopAnnouncement && (
-        <div style={{
-          position: 'fixed',
-          top: '16px',
-          left: '16px',
-          right: '16px',
-          zIndex: 99999,
-          background: 'linear-gradient(135deg, #10B981, #059669)',
-          color: '#ffffff',
-          padding: '12px 16px',
-          borderRadius: '16px',
-          boxShadow: '0 10px 25px rgba(16, 185, 129, 0.45)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(255, 255, 255, 0.2)'
-        }}>
-          <div style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: '50%',
-            background: 'rgba(255, 255, 255, 0.25)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0
-          }}>
-            <Volume2 size={20} color="#ffffff" />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.6px', opacity: 0.9, fontWeight: 600 }}>
-              Bekat ovozli e'loni
-            </div>
-            <div style={{ fontSize: '15px', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {playingStopAnnouncement.name}
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              if (currentAudioRef.current) {
-                try { currentAudioRef.current.pause(); } catch (e) {}
-                currentAudioRef.current = null;
-              }
-              setPlayingStopAnnouncement(null);
-            }}
-            style={{
-              background: 'rgba(255, 255, 255, 0.2)',
-              border: 'none',
-              borderRadius: '50%',
-              width: '28px',
-              height: '28px',
-              color: '#ffffff',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0
-            }}
-            title="To'xtatish"
-          >
-            <X size={16} />
-          </button>
         </div>
       )}
 
