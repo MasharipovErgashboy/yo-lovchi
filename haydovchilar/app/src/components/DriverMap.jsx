@@ -4,6 +4,14 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet-rotate';
 import { Navigation, Plus, Minus, Compass, X, Flag, Clock, MapPin, Maximize, Minimize } from 'lucide-react';
 
+function getZoomWeights(zoom) {
+  const z = Math.max(10, Math.min(20, zoom));
+  const main = Math.round(Math.max(4, 7 * Math.pow(1.35, z - 14)));
+  const outline = Math.round(main + Math.max(3, (z - 11) * 1.2));
+  const glow = Math.round(main * 2.1);
+  return { main, outline, glow };
+}
+
 export default function DriverMap({ 
   assignedRoute, 
   driverLocation, 
@@ -16,6 +24,9 @@ export default function DriverMap({
   const driverMarkerRef = useRef(null);
   const routeLayerGroupRef = useRef(null);
   const navLayerGroupRef = useRef(null);
+
+  const routePolylinesRef = useRef({ glow: null, outline: null, main: null });
+  const navPolylinesRef = useRef({ glow: null, outline: null, main: null });
 
   const drawnRouteIdRef = useRef(null);
   const navDrawnKeyRef = useRef(null);
@@ -71,12 +82,45 @@ export default function DriverMap({
     map.on('zoomstart', handleUserInteraction);
     map.on('touchstart', handleUserInteraction);
 
+    // Dynamically scale polyline widths on zoom in / out
+    const updateAllWeights = () => {
+      if (!mapInstance.current) return;
+      const z = mapInstance.current.getZoom();
+      const w = getZoomWeights(z);
+
+      if (navPolylinesRef.current.glow) {
+        navPolylinesRef.current.glow.setStyle({ weight: w.glow });
+      }
+      if (navPolylinesRef.current.outline) {
+        navPolylinesRef.current.outline.setStyle({ weight: w.outline });
+      }
+      if (navPolylinesRef.current.main) {
+        navPolylinesRef.current.main.setStyle({ 
+          weight: w.main, 
+          dashArray: `${Math.round(w.main * 1.5)}, ${Math.round(w.main * 1.5)}` 
+        });
+      }
+
+      if (routePolylinesRef.current.glow) {
+        routePolylinesRef.current.glow.setStyle({ weight: w.glow });
+      }
+      if (routePolylinesRef.current.outline) {
+        routePolylinesRef.current.outline.setStyle({ weight: w.outline });
+      }
+      if (routePolylinesRef.current.main) {
+        routePolylinesRef.current.main.setStyle({ weight: w.main });
+      }
+    };
+
+    map.on('zoom zoomend', updateAllWeights);
+
     // Initial resize trigger
     setTimeout(() => {
       try { map.invalidateSize(); } catch (e) {}
     }, 200);
 
     return () => {
+      map.off('zoom zoomend', updateAllWeights);
       map.remove();
       mapInstance.current = null;
     };
@@ -121,32 +165,37 @@ export default function DriverMap({
       : '#0066FF';
 
     const drawRouteOnMap = (pts) => {
+      const z = mapInstance.current ? mapInstance.current.getZoom() : 14;
+      const w = getZoomWeights(z);
+
       // Glow polyline
-      L.polyline(pts, {
+      const glow = L.polyline(pts, {
         color: routeColor,
-        weight: 12,
+        weight: w.glow,
         opacity: 0.25,
         lineCap: 'round',
         lineJoin: 'round'
       }).addTo(layerGroup);
 
       // White outline
-      L.polyline(pts, {
+      const outline = L.polyline(pts, {
         color: '#ffffff',
-        weight: 7,
+        weight: w.outline,
         opacity: 0.95,
         lineCap: 'round',
         lineJoin: 'round'
       }).addTo(layerGroup);
 
       // Main line
-      L.polyline(pts, {
+      const main = L.polyline(pts, {
         color: routeColor,
-        weight: 5,
+        weight: w.main,
         opacity: 0.95,
         lineCap: 'round',
         lineJoin: 'round'
       }).addTo(layerGroup);
+
+      routePolylinesRef.current = { glow, outline, main };
 
       // Fit bounds only if nav is not active and user has not interacted
       if (!navToStartActive && !userMovedMapRef.current) {
@@ -210,6 +259,13 @@ export default function DriverMap({
     }
   }, [assignedRoute, navToStartActive]);
 
+  // Reset user moved map state when navigation is started so bounds auto-fit
+  useEffect(() => {
+    if (navToStartActive) {
+      userMovedMapRef.current = false;
+    }
+  }, [navToStartActive]);
+
   // Navigation Route from Driver's GPS to Bosh Bekat (Calculated ONCE without 5s refreshes)
   useEffect(() => {
     if (!mapInstance.current || !navLayerGroupRef.current) return;
@@ -217,6 +273,7 @@ export default function DriverMap({
 
     if (!navToStartActive || !assignedRoute) {
       navLayer.clearLayers();
+      navPolylinesRef.current = { glow: null, outline: null, main: null };
       setNavInfo(null);
       navDrawnKeyRef.current = null;
       return;
@@ -244,34 +301,38 @@ export default function DriverMap({
 
     const drawNavigationLine = (pts, distanceMeters, durationSec) => {
       navLayer.clearLayers();
+      const z = mapInstance.current ? mapInstance.current.getZoom() : 14;
+      const w = getZoomWeights(z);
 
       // Glow
-      L.polyline(pts, {
+      const glow = L.polyline(pts, {
         color: '#2563EB',
-        weight: 12,
+        weight: w.glow,
         opacity: 0.25,
         lineCap: 'round',
         lineJoin: 'round'
       }).addTo(navLayer);
 
       // White outline
-      L.polyline(pts, {
+      const outline = L.polyline(pts, {
         color: '#ffffff',
-        weight: 7,
+        weight: w.outline,
         opacity: 0.95,
         lineCap: 'round',
         lineJoin: 'round'
       }).addTo(navLayer);
 
       // Dashed navigation line
-      L.polyline(pts, {
+      const main = L.polyline(pts, {
         color: '#2563EB',
-        weight: 5,
+        weight: w.main,
         opacity: 0.95,
-        dashArray: '8, 8',
+        dashArray: `${Math.round(w.main * 1.5)}, ${Math.round(w.main * 1.5)}`,
         lineCap: 'round',
         lineJoin: 'round'
       }).addTo(navLayer);
+
+      navPolylinesRef.current = { glow, outline, main };
 
       // Destination Bosh Bekat Flag Marker
       const destHtml = `
@@ -296,17 +357,15 @@ export default function DriverMap({
         zIndexOffset: 4000
       }).addTo(navLayer);
 
-      // Initial fit bounds only if user hasn't moved the map
-      if (!userMovedMapRef.current) {
-        try {
-          const bounds = L.latLngBounds([
-            [driverLat, driverLng],
-            [startLat, startLng],
-            ...pts
-          ]);
-          mapInstance.current.fitBounds(bounds, { padding: [60, 60] });
-        } catch (e) {}
-      }
+      // Always automatically fit and frame navigation bounds so user sees the route
+      try {
+        const bounds = L.latLngBounds([
+          [driverLat, driverLng],
+          [startLat, startLng],
+          ...pts
+        ]);
+        mapInstance.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+      } catch (e) {}
 
       setNavInfo({
         distanceKm: (distanceMeters / 1000).toFixed(1),
@@ -351,11 +410,10 @@ export default function DriverMap({
     const { latitude, longitude, heading = 0 } = driverLocation;
 
     const selfMarkerHtml = `
-      <div class="driver-beacon-wrapper">
-        <div class="driver-beacon-wave"></div>
-        <div class="driver-beacon-pin" style="transform: rotate(${heading}deg);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="12 2 19 21 12 17 5 21 12 2"></polygon>
+      <div class="driver-nav-arrow-wrapper">
+        <div class="driver-nav-arrow" style="transform: rotate(${heading}deg);">
+          <svg width="34" height="34" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 2L28 28L16 22L4 28L16 2Z" fill="#0066FF" stroke="#FFFFFF" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
           </svg>
         </div>
       </div>
@@ -366,8 +424,8 @@ export default function DriverMap({
         icon: L.divIcon({
           className: 'self-driver-marker-wrap',
           html: selfMarkerHtml,
-          iconSize: [44, 44],
-          iconAnchor: [22, 22]
+          iconSize: [38, 38],
+          iconAnchor: [19, 19]
         }),
         zIndexOffset: 3000
       }).addTo(map);
