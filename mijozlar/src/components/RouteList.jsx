@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import VehicleCard from './VehicleCard';
-import { Loader2, Bus, AlertCircle } from 'lucide-react';
+import { Loader2, Bus, AlertCircle, Navigation, MapPinOff } from 'lucide-react';
 
-// Distance calculation utility
+// Distance calculation utility (Haversine formula in meters)
 function getDistanceMeters(lat1, lon1, lat2, lon2) {
   const R = 6371e3;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -17,12 +17,90 @@ function getDistanceMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-export default function RouteList({ onSelectRoute }) {
+// Distance from point P to line segment AB in meters
+function getDistanceToSegment(pLat, pLng, aLat, aLng, bLat, bLng) {
+  const latFactor = 111320;
+  const lonFactor = 111320 * Math.cos(((aLat + bLat) / 2 * Math.PI) / 180);
+
+  const px = (pLng - aLng) * lonFactor;
+  const py = (pLat - aLat) * latFactor;
+  const bx = (bLng - aLng) * lonFactor;
+  const by = (bLat - aLat) * latFactor;
+
+  const abLenSq = bx * bx + by * by;
+  if (abLenSq === 0) {
+    return Math.sqrt(px * px + py * py);
+  }
+
+  const t = Math.max(0, Math.min(1, (px * bx + py * by) / abLenSq));
+  const projX = t * bx;
+  const projY = t * by;
+
+  const dx = px - projX;
+  const dy = py - projY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Minimum distance from user coordinate to route polyline/stops
+function getMinDistanceToRoute(userLat, userLng, points) {
+  if (!points || points.length === 0) return Infinity;
+  if (points.length === 1) {
+    return getDistanceMeters(userLat, userLng, points[0][0], points[0][1]);
+  }
+  let minDist = Infinity;
+  for (let i = 0; i < points.length - 1; i++) {
+    const d = getDistanceToSegment(
+      userLat, userLng,
+      points[i][0], points[i][1],
+      points[i + 1][0], points[i + 1][1]
+    );
+    if (d < minDist) {
+      minDist = d;
+    }
+  }
+  return minDist;
+}
+
+// Extract [lat, lng] array from route polyline or stops
+function extractRoutePoints(route) {
+  if (!route) return [];
+  if (Array.isArray(route.polyline) && route.polyline.length >= 2) {
+    const pts = route.polyline.map(p => {
+      if (Array.isArray(p)) return [Number(p[0]), Number(p[1])];
+      if (p && typeof p.lat !== 'undefined' && typeof p.lng !== 'undefined') {
+        return [Number(p.lat), Number(p.lng)];
+      }
+      return null;
+    }).filter(Boolean);
+    if (pts.length >= 2) return pts;
+  }
+  if (Array.isArray(route.stops) && route.stops.length > 0) {
+    return route.stops.map(s => {
+      if (s && typeof s.lat !== 'undefined' && typeof s.lng !== 'undefined') {
+        return [Number(s.lat), Number(s.lng)];
+      }
+      return null;
+    }).filter(Boolean);
+  }
+  return [];
+}
+
+export default function RouteList({ 
+  onSelectRoute,
+  isUserLocationActive = false,
+  setIsUserLocationActive,
+  userLocation = null,
+  setUserLocation,
+  userDistanceToRoute = null,
+  setUserDistanceToRoute
+}) {
   const [routes, setRoutes] = useState([]);
   const [liveDrivers, setLiveDrivers] = useState([]);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [selectedDirection, setSelectedDirection] = useState('ketmoqda'); // 'ketmoqda' | 'kelmoqda'
   const [loading, setLoading] = useState(true);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState(null);
 
   const fetchRoutes = async () => {
     try {
@@ -56,10 +134,69 @@ export default function RouteList({ onSelectRoute }) {
   useEffect(() => {
     fetchRoutes();
     fetchLiveDrivers();
-    // Real-time polling every 2 seconds for instant updates
     const interval = setInterval(fetchLiveDrivers, 2000);
     return () => clearInterval(interval);
   }, []);
+
+  const activeRoute = (selectedRouteId && routes.find(r => r.id === selectedRouteId)) || routes[0];
+
+  // Location Toggle handler with 300 meter route proximity requirement
+  const handleToggleLocation = () => {
+    if (isUserLocationActive) {
+      if (setIsUserLocationActive) setIsUserLocationActive(false);
+      if (setUserLocation) setUserLocation(null);
+      if (setUserDistanceToRoute) setUserDistanceToRoute(null);
+      setLocationError(null);
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setLocationError("Qurilmangizda geolokatsiya qo'llab-quvvatlanmaydi.");
+      return;
+    }
+
+    setIsLocating(true);
+    setLocationError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setIsLocating(false);
+        const uLat = pos.coords.latitude;
+        const uLng = pos.coords.longitude;
+
+        const points = extractRoutePoints(activeRoute);
+        if (points.length === 0) {
+          if (setIsUserLocationActive) setIsUserLocationActive(true);
+          if (setUserLocation) setUserLocation({ lat: uLat, lng: uLng });
+          if (setUserDistanceToRoute) setUserDistanceToRoute(0);
+          return;
+        }
+
+        const minDist = getMinDistanceToRoute(uLat, uLng, points);
+        const roundedDist = Math.round(minDist);
+
+        if (minDist > 300) {
+          // Reject activation if more than 300m away
+          if (setIsUserLocationActive) setIsUserLocationActive(false);
+          if (setUserLocation) setUserLocation(null);
+          if (setUserDistanceToRoute) setUserDistanceToRoute(roundedDist);
+          setLocationError(`Siz marshrut chizig'idan ${roundedDist} metr uzoqdasiz. Joylashuv faqat marshrutga 300 metr masofa ichida yoqiladi!`);
+        } else {
+          // Accept activation within 300m
+          if (setIsUserLocationActive) setIsUserLocationActive(true);
+          if (setUserLocation) setUserLocation({ lat: uLat, lng: uLng });
+          if (setUserDistanceToRoute) setUserDistanceToRoute(roundedDist);
+          setLocationError(null);
+        }
+      },
+      (err) => {
+        setIsLocating(false);
+        console.warn("Geolokatsiya xatosi:", err);
+        setLocationError("Joylashuvingizni aniqlab bo'lmadi. GPS yoqilganligini va ruxsat berilganligini tekshiring.");
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+    );
+  };
 
   if (loading) {
     return (
@@ -69,8 +206,6 @@ export default function RouteList({ onSelectRoute }) {
       </div>
     );
   }
-
-  const activeRoute = (selectedRouteId && routes.find(r => r.id === selectedRouteId)) || routes[0];
 
   const getStopName = (stop, fallback) => {
     if (!stop) return fallback;
@@ -98,23 +233,25 @@ export default function RouteList({ onSelectRoute }) {
   const forwardDirTitle = `${startStopName} - ${endStopName}`;
   const backwardDirTitle = `${endStopName} - ${startStopName}`;
 
-  // Calculate detailed vehicle info and arrival ETA for all active drivers
+  // Process vehicles: Calculate stops and ETA (User ETA vs Next Stop ETA)
   const processedVehicles = (liveDrivers || []).map(driver => {
     let currentStopName = "1-bekat (Bosh bekat)";
     let nextStopName = "";
     let etaMinutes = 3;
+    let etaSubtitle = "keyingi bekatga";
+    let userDistMeters = null;
+    let userDistanceText = null;
 
     const driverRoute = routes.find(r => String(r.id) === String(driver.route_id)) || activeRoute;
     const stops = driverRoute && Array.isArray(driverRoute.stops) ? driverRoute.stops : [];
 
     if (stops.length > 0 && driver.latitude && driver.longitude) {
-      // Find closest stop
       let minDist = Infinity;
       let closestIdx = 0;
 
       stops.forEach((s, idx) => {
         if (s && s.lat && s.lng) {
-          const d = getDistanceMeters(driver.latitude, driver.longitude, Number(s.lat), Number(s.lng));
+          const d = getDistanceMeters(Number(driver.latitude), Number(driver.longitude), Number(s.lat), Number(s.lng));
           if (d < minDist) {
             minDist = d;
             closestIdx = idx;
@@ -135,24 +272,40 @@ export default function RouteList({ onSelectRoute }) {
       if (closestIdx < stops.length - 1) {
         const nStop = stops[closestIdx + 1];
         nextStopName = typeof nStop === 'object' ? nStop.name : String(nStop);
-        const distToNext = getDistanceMeters(driver.latitude, driver.longitude, Number(nStop.lat), Number(nStop.lng));
-        // Urban speed ~400 meters per minute (~25 km/h)
+        const distToNext = getDistanceMeters(Number(driver.latitude), Number(driver.longitude), Number(nStop.lat), Number(nStop.lng));
+        // Default ETA when user location is OFF: time to next stop (~400 m/min)
         etaMinutes = Math.max(1, Math.round(distToNext / 400));
+        etaSubtitle = "keyingi bekatga";
       } else {
         nextStopName = "Oxirgi bekat";
         etaMinutes = 1;
+        etaSubtitle = "keyingi bekatga";
       }
     }
 
+    // Direction calculation
     let direction = 'ketmoqda';
-    const polyPoints = Array.isArray(driverRoute?.polyline) && driverRoute.polyline.length >= 2
-      ? driverRoute.polyline.map(p => [p[0], p[1]])
-      : (stops.filter(s => s && typeof s.lat === 'number' && typeof s.lng === 'number').map(s => [s.lat, s.lng]));
-
+    const polyPoints = extractRoutePoints(driverRoute);
     if (polyPoints.length >= 2 && driver.latitude && driver.longitude) {
       const distToStart = getDistanceMeters(Number(driver.latitude), Number(driver.longitude), polyPoints[0][0], polyPoints[0][1]);
       const distToEnd = getDistanceMeters(Number(driver.latitude), Number(driver.longitude), polyPoints[polyPoints.length - 1][0], polyPoints[polyPoints.length - 1][1]);
       direction = distToStart <= distToEnd ? 'ketmoqda' : 'kelmoqda';
+    }
+
+    // WHEN USER LOCATION IS ON: Calculate ETA to the USER directly!
+    if (isUserLocationActive && userLocation && driver.latitude && driver.longitude) {
+      userDistMeters = getDistanceMeters(
+        Number(driver.latitude),
+        Number(driver.longitude),
+        userLocation.lat,
+        userLocation.lng
+      );
+      // City travel time at ~380m/min with road curvature factor 1.25
+      etaMinutes = Math.max(1, Math.round((userDistMeters * 1.25) / 380));
+      etaSubtitle = "sizgacha yetib keladi";
+      userDistanceText = userDistMeters >= 1000
+        ? `${(userDistMeters / 1000).toFixed(1)} km`
+        : `${Math.round(userDistMeters)} m`;
     }
 
     return {
@@ -170,14 +323,24 @@ export default function RouteList({ onSelectRoute }) {
       currentStopName,
       nextStopName,
       etaMinutes,
+      etaSubtitle,
+      userDistMeters,
+      userDistanceText,
+      isUserLocationActive,
       direction,
       directionText: direction === 'ketmoqda' ? 'Ketmoqda' : 'Kelmoqda',
       directionColor: direction === 'ketmoqda' ? (driverRoute?.arrow_color_forward || '#0066FF') : (driverRoute?.arrow_color_backward || '#10B981')
     };
   });
 
-  // Sort: Eng tez kelayotgani birinchi chiqadi tepada!
-  processedVehicles.sort((a, b) => a.etaMinutes - b.etaMinutes);
+  // Sort: When user location is active, sort by distance to user so the closest car arrives first (#1 Eng yaqin)
+  // When location is off, sort by time to next stop
+  processedVehicles.sort((a, b) => {
+    if (isUserLocationActive && a.userDistMeters != null && b.userDistMeters != null) {
+      return a.userDistMeters - b.userDistMeters;
+    }
+    return a.etaMinutes - b.etaMinutes;
+  });
 
   // Filter vehicles belonging to the current active route
   const routeVehicles = activeRoute
@@ -245,6 +408,68 @@ export default function RouteList({ onSelectRoute }) {
           </span>
         </button>
       </div>
+
+      {/* User Location Widget (Joylashuvni yoqish / o'chirish) */}
+      <div className={`user-location-widget ${isUserLocationActive ? 'is-active' : 'is-inactive'}`}>
+        <div className="location-widget-info">
+          <div className="location-status-icon">
+            {isUserLocationActive ? (
+              <Navigation size={18} color="#0066FF" />
+            ) : (
+              <MapPinOff size={18} color="#EF4444" />
+            )}
+          </div>
+          <div className="location-widget-text">
+            <div className="location-widget-title">
+              <span>Joylashuv</span>
+              {isUserLocationActive ? (
+                <span className="location-range-tag">Faol (Marshrutda)</span>
+              ) : (
+                <span className="location-offline-tag">O'chiq</span>
+              )}
+            </div>
+            <div className="location-widget-desc">
+              {isUserLocationActive 
+                ? `Marshrutgacha: ${userDistanceToRoute || 0} m • Sizgacha kelish vaqti hisoblanmoqda`
+                : "Faqat marshrut chizig'iga 300 m yaqin masofada yoqiladi"}
+            </div>
+          </div>
+        </div>
+
+        <button 
+          type="button"
+          className={`location-toggle-action-btn ${isUserLocationActive ? 'btn-turn-off' : 'btn-turn-on'}`}
+          onClick={handleToggleLocation}
+          disabled={isLocating}
+        >
+          {isLocating ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <Loader2 className="animate-spin" size={13} /> Aniqlanmoqda...
+            </span>
+          ) : isUserLocationActive ? (
+            "O'chirish"
+          ) : (
+            "Joylashuvni yoqish"
+          )}
+        </button>
+      </div>
+
+      {/* Location Warning / Alert Banner */}
+      {locationError && (
+        <div className="location-warning-banner">
+          <AlertCircle size={18} color="#EF4444" style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div className="location-warning-text">
+            <span>{locationError}</span>
+          </div>
+          <button 
+            type="button" 
+            className="location-warning-close"
+            onClick={() => setLocationError(null)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Vehicles List (Filtered by selected direction) */}
       {displayedVehicles.length > 0 ? (

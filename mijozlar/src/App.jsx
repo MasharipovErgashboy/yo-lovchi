@@ -70,6 +70,9 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('marshrutlar') // 'marshrutlar' | 'xarita' | 'support'
   const [selectedRouteForMap, setSelectedRouteForMap] = useState(null)
+  const [isUserLocationActive, setIsUserLocationActive] = useState(false)
+  const [userLocation, setUserLocation] = useState(null)
+  const [userDistanceToRoute, setUserDistanceToRoute] = useState(null)
 
   useEffect(() => {
     if (window.Telegram && window.Telegram.WebApp) {
@@ -146,12 +149,24 @@ function App() {
 
   return (
     <div className={`app-container ${activeTab === 'xarita' ? 'map-mode' : ''}`}>
-      <Header activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Header 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        isUserLocationActive={isUserLocationActive} 
+      />
       
       <ErrorBoundary>
         <main className="main-content">
           {activeTab === 'marshrutlar' && (
-            <RouteList onSelectRoute={handleSelectRoute} />
+            <RouteList 
+              onSelectRoute={handleSelectRoute}
+              isUserLocationActive={isUserLocationActive}
+              setIsUserLocationActive={setIsUserLocationActive}
+              userLocation={userLocation}
+              setUserLocation={setUserLocation}
+              userDistanceToRoute={userDistanceToRoute}
+              setUserDistanceToRoute={setUserDistanceToRoute}
+            />
           )}
           {activeTab === 'xarita' && (
             <MapComponent initialRouteId={selectedRouteForMap} />

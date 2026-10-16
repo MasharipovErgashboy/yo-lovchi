@@ -76,7 +76,12 @@ export default function VehicleCard({
             <Clock size={16} style={{ display: 'inline', marginRight: '4px', verticalAlign: '-2px' }} />
             {etaMinutes} daq
           </div>
-          <div className="vehicle-eta-sub">yetib boradi</div>
+          <div className="vehicle-eta-sub">{vehicle.etaSubtitle || "yetib boradi"}</div>
+          {vehicle.isUserLocationActive && vehicle.userDistanceText && (
+            <div className="vehicle-user-dist-pill">
+              📍 {vehicle.userDistanceText}
+            </div>
+          )}
         </div>
       </div>
 
