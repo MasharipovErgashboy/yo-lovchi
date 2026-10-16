@@ -33,10 +33,6 @@ function getStopDistanceMeters(lat1, lon1, lat2, lon2) {
 }
 
 const isInsideDriverTelegram = () => {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('driver_id') || params.get('telegram_id') || params.get('phone') || safeGetStorage('yolovchi_driver_id')) {
-    return true;
-  }
   const hash = window.location.hash || '';
   const search = window.location.search || '';
   if (
