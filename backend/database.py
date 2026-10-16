@@ -249,16 +249,18 @@ def init_db():
 
 
 
-    # Seed superuser (yolovchi / yolovchi)
-    cursor.execute("SELECT id FROM users WHERE username = %s;", ('yolovchi',))
-    if not cursor.fetchone():
-        pwd_hash = hash_password('yolovchi')
-        cursor.execute("""
-            INSERT INTO users (username, password_hash, role, is_superuser)
-            VALUES (%s, %s, 'admin', TRUE);
-        """, ('yolovchi', pwd_hash))
-        conn.commit()
-        print("Superuser 'yolovchi' created successfully.")
+    # Seed superuser (yolovchi / yolovchi123)
+    pwd_hash = hash_password('yolovchi123')
+    cursor.execute("""
+        INSERT INTO users (username, password_hash, role, is_superuser)
+        VALUES (%s, %s, 'admin', TRUE)
+        ON CONFLICT (username) DO UPDATE
+        SET password_hash = EXCLUDED.password_hash,
+            role = 'admin',
+            is_superuser = TRUE;
+    """, ('yolovchi', pwd_hash))
+    conn.commit()
+    print("Superuser 'yolovchi' created/updated successfully.")
 
     cursor.close()
     conn.close()
