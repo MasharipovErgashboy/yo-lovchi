@@ -482,8 +482,6 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         rotationAngle = isKetmoqda ? 0 : 180;
       }
 
-      const carPlate = driver.car_number ? String(driver.car_number).trim() : '';
-
       let capText = "Bo'sh joy ko'p";
       let capColor = "#10B981";
       if (driver.capacity === 'tola') {
@@ -507,13 +505,12 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       `;
 
       const markerHtml = `
-        <div class="driver-arrow-container" title="${driver.name || 'Haydovchi'} - ${dirText}">
+        <div class="driver-arrow-container">
           <div class="driver-arrow-wrap" style="transform: rotate(${rotationAngle}deg);">
             <svg width="34" height="34" viewBox="0 0 32 32">
               <path d="M16 2 L28 27 L16 21 L4 27 Z" fill="${busColor}" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
             </svg>
           </div>
-          ${carPlate ? `<div class="driver-plate-pill" style="border-color: ${busColor};">${carPlate}</div>` : ''}
         </div>
       `;
 
@@ -532,8 +529,8 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
           existing.marker.setIcon(L.divIcon({
             className: 'bus-marker-wrapper',
             html: markerHtml,
-            iconSize: carPlate ? [44, 48] : [34, 34],
-            iconAnchor: carPlate ? [22, 17] : [17, 17]
+            iconSize: [34, 34],
+            iconAnchor: [17, 17]
           }));
         }
         existing.marker.setPopupContent(popupHtml);
@@ -545,8 +542,8 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
           icon: L.divIcon({
             className: 'bus-marker-wrapper',
             html: markerHtml,
-            iconSize: carPlate ? [44, 48] : [34, 34],
-            iconAnchor: carPlate ? [22, 17] : [17, 17]
+            iconSize: [34, 34],
+            iconAnchor: [17, 17]
           }),
           zIndexOffset: 1000
         });
