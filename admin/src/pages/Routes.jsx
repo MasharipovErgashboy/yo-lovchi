@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, Navigation } from 'lucide-react';
+import { Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, Navigation, Music, Volume2 } from 'lucide-react';
 import './PagesCommon.css';
 import './Routes.css';
 
@@ -19,6 +19,7 @@ export default function RoutesPage() {
   const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [uploadingStopIdx, setUploadingStopIdx] = useState(null);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingRouteId, setEditingRouteId] = useState(null);
@@ -31,8 +32,8 @@ export default function RoutesPage() {
   const [arrowColorForward, setArrowColorForward] = useState('#0066FF');
   const [arrowColorBackward, setArrowColorBackward] = useState('#10B981');
   const [newStops, setNewStops] = useState([
-    { name: '', raw: '' },
-    { name: '', raw: '' }
+    { name: '', raw: '', audio_url: null, audio_name: '' },
+    { name: '', raw: '', audio_url: null, audio_name: '' }
   ]);
 
   const fetchRoutes = async () => {
@@ -62,8 +63,8 @@ export default function RoutesPage() {
     setArrowColorForward('#0066FF');
     setArrowColorBackward('#10B981');
     setNewStops([
-      { name: '1-bekat (Bosh bekat)', raw: '' },
-      { name: 'Oxirgi bekat', raw: '' }
+      { name: '1-bekat (Bosh bekat)', raw: '', audio_url: null, audio_name: '' },
+      { name: 'Oxirgi bekat', raw: '', audio_url: null, audio_name: '' }
     ]);
     setIsAddModalOpen(true);
   };
@@ -82,14 +83,19 @@ export default function RoutesPage() {
     if (Array.isArray(route.stops) && route.stops.length > 0) {
       formattedStops = route.stops.map((s, idx) => {
         if (typeof s === 'string') {
-          return { name: `Bekat ${idx + 1}`, raw: s };
+          return { name: `Bekat ${idx + 1}`, raw: s, audio_url: null, audio_name: '' };
         }
-        return { name: s.name || `Bekat ${idx + 1}`, raw: s.raw || (s.lat && s.lng ? `${s.lat}, ${s.lng}` : '') };
+        return { 
+          name: s.name || `Bekat ${idx + 1}`, 
+          raw: s.raw || (s.lat && s.lng ? `${s.lat}, ${s.lng}` : ''),
+          audio_url: s.audio_url || null,
+          audio_name: s.audio_name || (s.audio_url ? s.audio_url.split('/').pop() : '')
+        };
       });
     } else {
       formattedStops = [
-        { name: 'Bosh bekat', raw: '' },
-        { name: 'Oxirgi bekat', raw: '' }
+        { name: 'Bosh bekat', raw: '', audio_url: null, audio_name: '' },
+        { name: 'Oxirgi bekat', raw: '', audio_url: null, audio_name: '' }
       ];
     }
     setNewStops(formattedStops);
@@ -119,7 +125,7 @@ export default function RoutesPage() {
   };
 
   const handleAddStop = () => {
-    setNewStops([...newStops, { name: `Bekat ${newStops.length + 1}`, raw: '' }]);
+    setNewStops([...newStops, { name: `Bekat ${newStops.length + 1}`, raw: '', audio_url: null, audio_name: '' }]);
   };
 
   const handleStopFieldChange = (index, field, value) => {
@@ -132,6 +138,33 @@ export default function RoutesPage() {
     if (newStops.length > 2) {
       const updated = newStops.filter((_, i) => i !== index);
       setNewStops(updated);
+    }
+  };
+
+  const handleAudioFileUpload = async (index, file) => {
+    if (!file) return;
+    setUploadingStopIdx(index);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${BACKEND_URL}/api/upload/audio`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        const updated = [...newStops];
+        updated[index].audio_url = data.url;
+        updated[index].audio_name = file.name;
+        setNewStops(updated);
+      } else {
+        alert(data.detail || "Audio faylni yuklashda xatolik yuz berdi!");
+      }
+    } catch (err) {
+      console.error("Audio upload error:", err);
+      alert("Server bilan bog'lanishda xatolik yuz berdi!");
+    } finally {
+      setUploadingStopIdx(null);
     }
   };
 
@@ -153,7 +186,9 @@ export default function RoutesPage() {
         arrow_color_backward: arrowColorBackward,
         stops: newStops.map((s, idx) => ({
           name: s.name && s.name.trim() !== '' ? s.name.trim() : `Bekat ${idx + 1}`,
-          raw: s.raw.trim()
+          raw: s.raw.trim(),
+          audio_url: s.audio_url || null,
+          audio_name: s.audio_name || ''
         })),
         is_active: true
       };
@@ -289,6 +324,11 @@ export default function RoutesPage() {
                           ) : (
                             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                               📍 {stopLat && stopLng ? `${stopLat.toFixed(4)}, ${stopLng.toFixed(4)}` : stopRaw}
+                            </span>
+                          )}
+                          {typeof stop === 'object' && stop.audio_url && (
+                            <span style={{ fontSize: '12px', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                              <Volume2 size={13} /> Ovozli e'lon (.mp3)
                             </span>
                           )}
                         </li>
@@ -497,7 +537,7 @@ export default function RoutesPage() {
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {newStops.map((stop, idx) => (
-                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '6px', background: 'rgba(15, 23, 42, 0.4)', padding: '10px 12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <div style={{ 
                             width: '24px', height: '24px', borderRadius: '50%', background: newRouteColor, 
@@ -525,6 +565,7 @@ export default function RoutesPage() {
                             </button>
                           )}
                         </div>
+
                         <input 
                           type="text" 
                           className="custom-input" 
@@ -534,6 +575,70 @@ export default function RoutesPage() {
                           onChange={(e) => handleStopFieldChange(idx, 'raw', e.target.value)}
                           required
                         />
+
+                        {/* MP3 Audio Upload / Player */}
+                        <div style={{ marginTop: '2px' }}>
+                          {stop.audio_url ? (
+                            <div style={{ 
+                              display: 'flex', alignItems: 'center', gap: '8px', 
+                              background: 'rgba(16, 185, 129, 0.1)', padding: '6px 10px', 
+                              borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.25)' 
+                            }}>
+                              <Volume2 size={16} color="#10b981" style={{ flexShrink: 0 }} />
+                              <span style={{ fontSize: '12px', color: '#10b981', fontWeight: 500, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {stop.audio_name || 'MP3 audio biriktirilgan'}
+                              </span>
+                              <audio 
+                                src={stop.audio_url.startsWith('http') ? stop.audio_url : `${BACKEND_URL}${stop.audio_url}`} 
+                                controls 
+                                style={{ height: '28px', maxWidth: '170px' }} 
+                              />
+                              <button 
+                                type="button" 
+                                style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                                onClick={() => {
+                                  handleStopFieldChange(idx, 'audio_url', null);
+                                  handleStopFieldChange(idx, 'audio_name', '');
+                                }}
+                                title="Audioni o'chirish"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <label style={{ 
+                              display: 'inline-flex', alignItems: 'center', gap: '6px', 
+                              fontSize: '12px', color: '#94a3b8', cursor: 'pointer', 
+                              padding: '7px 10px', borderRadius: '8px', 
+                              background: 'rgba(255, 255, 255, 0.03)', border: '1px dashed rgba(255, 255, 255, 0.15)',
+                              transition: 'all 0.2s', width: '100%', boxSizing: 'border-box', justifyContent: 'center'
+                            }}>
+                              {uploadingStopIdx === idx ? (
+                                <>
+                                  <Loader2 size={14} className="animate-spin" color="#3b82f6" />
+                                  <span style={{ color: '#3b82f6', fontWeight: 500 }}>Audio yuklanmoqda...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Music size={14} color="#3b82f6" />
+                                  <span>Bekat uchun MP3 audio yuklash (ixtiyoriy)</span>
+                                </>
+                              )}
+                              <input 
+                                type="file" 
+                                accept="audio/*,.mp3,.wav,.m4a" 
+                                style={{ display: 'none' }} 
+                                disabled={uploadingStopIdx === idx}
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    handleAudioFileUpload(idx, e.target.files[0]);
+                                    e.target.value = '';
+                                  }
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>

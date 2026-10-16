@@ -1,8 +1,12 @@
-from fastapi import FastAPI, HTTPException, status, Response
+from fastapi import FastAPI, HTTPException, status, Response, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import logging
+import os
+import uuid
+import shutil
 
 from database import (
     init_db,
@@ -60,6 +64,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Uploads directory and static file serving
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+AUDIO_DIR = os.path.join(UPLOAD_DIR, "audio")
+os.makedirs(AUDIO_DIR, exist_ok=True)
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 @app.on_event("startup")
 def on_startup():
@@ -487,6 +498,34 @@ def read_message(
     if target_driver:
         mark_message_as_read(message_id, target_driver["id"])
     return {"success": True}
+ 
+# --- FILE UPLOAD ENDPOINTS ---
+
+@app.post("/api/upload/audio")
+async def upload_audio(file: UploadFile = File(...)):
+    """Upload MP3/audio file for route stops announcement."""
+    try:
+        filename = file.filename or "announcement.mp3"
+        ext = os.path.splitext(filename)[1].lower()
+        if not ext or ext not in [".mp3", ".wav", ".m4a", ".ogg", ".aac", ".webm"]:
+            ext = ".mp3"
+        
+        unique_filename = f"{uuid.uuid4().hex}{ext}"
+        file_path = os.path.join(AUDIO_DIR, unique_filename)
+        
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        file_url = f"/uploads/audio/{unique_filename}"
+        return {
+            "success": True,
+            "url": file_url,
+            "filename": filename,
+            "size": os.path.getsize(file_path)
+        }
+    except Exception as e:
+        logger.error(f"Error uploading audio: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Audio yuklashda xatolik: {str(e)}")
 
 # --- ROUTES & GPS ENDPOINTS ---
 

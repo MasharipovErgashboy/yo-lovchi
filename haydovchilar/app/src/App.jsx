@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { AlertTriangle, Navigation, MapPin, X } from 'lucide-react'
+import { AlertTriangle, Navigation, MapPin, X, Volume2 } from 'lucide-react'
 import './App.css'
 import Header from './components/Header'
 import LocationToggle from './components/LocationToggle'
@@ -15,6 +15,22 @@ const safeGetStorage = (key) => {
 const safeSetStorage = (key, val) => {
   try { localStorage.setItem(key, val); } catch (e) {}
 };
+
+function getStopDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371e3; // meters
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) *
+    Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
 
 const checkIsTelegram = () => {
   const hash = window.location.hash || '';
@@ -56,6 +72,11 @@ function App() {
   const [driverLocation, setDriverLocation] = useState(null)
   const [deviationAlert, setDeviationAlert] = useState(null)
   const [routeWarning, setRouteWarning] = useState(null)
+  const [playingStopAnnouncement, setPlayingStopAnnouncement] = useState(null)
+  const playedStopsRef = useRef(new Set())
+  const currentAudioRef = useRef(null)
+  const assignedRouteRef = useRef(assignedRoute)
+  assignedRouteRef.current = assignedRoute
 
   if (!isTelegram) {
     return (
@@ -316,6 +337,56 @@ function App() {
     };
   };
 
+  // Play Stop Announcement helper (Har bir bekatga yetib kelganda 1 marta ijro etiladi)
+  const playStopAnnouncement = (stop) => {
+    try {
+      if (currentAudioRef.current) {
+        try { currentAudioRef.current.pause(); } catch (e) {}
+        currentAudioRef.current = null;
+      }
+
+      let audioUrl = stop.audio_url;
+      if (!audioUrl) return;
+
+      if (!audioUrl.startsWith('http')) {
+        if (window.location.hostname.includes('masharipov-ergashboy.uz')) {
+          audioUrl = `https://api.masharipov-ergashboy.uz${audioUrl}`;
+        } else {
+          audioUrl = `${window.location.origin}${audioUrl}`;
+        }
+      }
+
+      const audio = new Audio(audioUrl);
+      currentAudioRef.current = audio;
+
+      const stopDisplayName = stop.name || `${stop.order}-bekat`;
+      setPlayingStopAnnouncement({
+        name: stopDisplayName,
+        order: stop.order
+      });
+
+      audio.play().catch((err) => {
+        console.warn("Audio autoplay blocked or failed:", err);
+      });
+
+      audio.onended = () => {
+        setPlayingStopAnnouncement(null);
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
+      };
+
+      audio.onerror = () => {
+        setPlayingStopAnnouncement(null);
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
+      };
+    } catch (e) {
+      console.error("Audio playback error:", e);
+    }
+  };
+
   // Location Toggle Handler (with immediate online/offline GPS signal)
   const handleLocationToggle = (newEnabled, currentPos = null) => {
     if (newEnabled && !assignedRoute) {
@@ -332,7 +403,14 @@ function App() {
     const identity = getDriverIdentity();
 
     if (!newEnabled) {
-      // Driver turned off location -> clear watch and immediately notify backend
+      // Driver turned off location -> stop audio and clear announcements
+      if (currentAudioRef.current) {
+        try { currentAudioRef.current.pause(); } catch (e) {}
+        currentAudioRef.current = null;
+      }
+      setPlayingStopAnnouncement(null);
+      playedStopsRef.current.clear();
+
       if (watchIdRef.current !== null && "geolocation" in navigator) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -344,6 +422,12 @@ function App() {
         body: JSON.stringify(identity)
       }).catch(err => console.error("Offline error:", err));
     } else {
+      // Driver turned on location -> unlock audio context on user gesture
+      try {
+        const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+        silentAudio.play().catch(() => {});
+      } catch (e) {}
+
       // Driver turned on location -> notify backend immediately with current GPS
       const lat = currentPos?.coords?.latitude || driverLocation?.latitude;
       const lng = currentPos?.coords?.longitude || driverLocation?.longitude;
@@ -400,6 +484,31 @@ function App() {
 
       // Transmit to backend API ONLY when driver is strictly online
       if (isOnlineRef.current) {
+        // --- REAL-TIME STOP MP3 ANNOUNCEMENT ---
+        const currentRoute = assignedRouteRef.current || assignedRoute;
+        if (currentRoute && Array.isArray(currentRoute.stops) && currentRoute.stops.length > 0) {
+          currentRoute.stops.forEach((stop) => {
+            if (!stop || !stop.audio_url || typeof stop.lat !== 'number' || typeof stop.lng !== 'number') {
+              return;
+            }
+            const dist = getStopDistanceMeters(lat, lng, stop.lat, stop.lng);
+            const stopKey = stop.id || stop.order || `${stop.name}_${stop.lat}_${stop.lng}`;
+
+            // Driver arrived at stop (within 80 meters)
+            if (dist <= 80) {
+              if (!playedStopsRef.current.has(stopKey)) {
+                playedStopsRef.current.add(stopKey);
+                playStopAnnouncement(stop);
+              }
+            } else if (dist > 250) {
+              // Reset when moving away so it plays again on the next round/trip
+              if (playedStopsRef.current.has(stopKey)) {
+                playedStopsRef.current.delete(stopKey);
+              }
+            }
+          });
+        }
+
         const identity = getDriverIdentity();
         if (identity.driver_id || identity.phone || identity.telegram_id) {
           fetch('/api/driver/location', {
@@ -686,6 +795,73 @@ function App() {
               Tushunarli
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Real-time Stop Audio Announcement Banner */}
+      {playingStopAnnouncement && (
+        <div style={{
+          position: 'fixed',
+          top: '16px',
+          left: '16px',
+          right: '16px',
+          zIndex: 99999,
+          background: 'linear-gradient(135deg, #10B981, #059669)',
+          color: '#ffffff',
+          padding: '12px 16px',
+          borderRadius: '16px',
+          boxShadow: '0 10px 25px rgba(16, 185, 129, 0.45)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255, 255, 255, 0.2)'
+        }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            background: 'rgba(255, 255, 255, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0
+          }}>
+            <Volume2 size={20} color="#ffffff" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.6px', opacity: 0.9, fontWeight: 600 }}>
+              Bekat ovozli e'loni
+            </div>
+            <div style={{ fontSize: '15px', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {playingStopAnnouncement.name}
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              if (currentAudioRef.current) {
+                try { currentAudioRef.current.pause(); } catch (e) {}
+                currentAudioRef.current = null;
+              }
+              setPlayingStopAnnouncement(null);
+            }}
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              borderRadius: '50%',
+              width: '28px',
+              height: '28px',
+              color: '#ffffff',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}
+            title="To'xtatish"
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
 

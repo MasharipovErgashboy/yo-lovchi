@@ -808,9 +808,13 @@ def process_stops_and_polyline(stops: List[Any], polyline: Optional[List[Any]] =
     for i, s in enumerate(stops):
         raw_val = ""
         name_val = f"{i + 1}-bekat"
+        audio_url_val = None
+        audio_name_val = None
         if isinstance(s, dict):
             raw_val = s.get("raw") or s.get("coordinates") or ""
             name_val = s.get("name") or name_val
+            audio_url_val = s.get("audio_url")
+            audio_name_val = s.get("audio_name")
             lat_val = s.get("lat")
             lng_val = s.get("lng")
             if lat_val is not None and lng_val is not None:
@@ -826,7 +830,9 @@ def process_stops_and_polyline(stops: List[Any], polyline: Optional[List[Any]] =
             "name": name_val,
             "raw": parsed["raw"],
             "lat": parsed["lat"],
-            "lng": parsed["lng"]
+            "lng": parsed["lng"],
+            "audio_url": audio_url_val,
+            "audio_name": audio_name_val
         }
         processed_stops.append(stop_obj)
         if parsed["lat"] is not None and parsed["lng"] is not None:
