@@ -1,6 +1,16 @@
 import React from 'react';
 import { MapPin, Users, Clock, Navigation, ChevronRight, Bus } from 'lucide-react';
 
+function formatStopWithGa(stopName) {
+  if (!stopName) return "Bekatga";
+  const trimmed = stopName.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.endsWith('ga') || lower.endsWith('ka') || lower.endsWith('qa')) {
+    return trimmed;
+  }
+  return `${trimmed}ga`;
+}
+
 export default function VehicleCard({
   rank,
   vehicle,
@@ -43,8 +53,10 @@ export default function VehicleCard({
     };
   }
 
-  // Title: If location is OFF -> Next stop name in large bold text; If location is ON -> "Sizgacha"
-  const cardTitle = isUserLocationActive ? "Sizgacha" : (nextStopName || currentStopName || "Keyingi bekat");
+  // Direction word (ketmoqda / kelmoqda)
+  const dirWord = (vehicle.directionText || 'Ketmoqda').toLowerCase();
+  const stopWithGa = formatStopWithGa(nextStopName || currentStopName || "Bekat");
+  const offlineTitle = `${stopWithGa} ${dirWord}`;
 
   return (
     <div 
@@ -60,16 +72,28 @@ export default function VehicleCard({
           </div>
 
           <div>
-            <div className="vehicle-driver-name">{cardTitle}</div>
-            <div className="vehicle-sub-status">
-              <span className="live-pulsing-dot" style={{ backgroundColor: vehicle.directionColor || '#0066FF' }}></span>
-              <strong style={{ color: vehicle.directionColor || '#0066FF' }}>{vehicle.directionText || 'Ketmoqda'}</strong>
-              {isUserLocationActive && vehicle.userDistanceText && (
-                <span className="vehicle-distance-text">
-                  • {vehicle.userDistanceText}
-                </span>
-              )}
-            </div>
+            {!isUserLocationActive ? (
+              <div className="vehicle-driver-name">
+                <span 
+                  className="live-pulsing-dot" 
+                  style={{ backgroundColor: vehicle.directionColor || '#0066FF', flexShrink: 0 }}
+                ></span>
+                <span>{offlineTitle}</span>
+              </div>
+            ) : (
+              <div>
+                <div className="vehicle-driver-name">Sizgacha</div>
+                <div className="vehicle-sub-status">
+                  <span className="live-pulsing-dot" style={{ backgroundColor: vehicle.directionColor || '#0066FF' }}></span>
+                  <strong style={{ color: vehicle.directionColor || '#0066FF' }}>{vehicle.directionText || 'Ketmoqda'}</strong>
+                  {vehicle.userDistanceText && (
+                    <span className="vehicle-distance-text">
+                      • {vehicle.userDistanceText}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
