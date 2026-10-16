@@ -106,45 +106,100 @@ function getRouteSegmentBearing(driverLat, driverLng, polyPoints) {
   return bestBearing;
 }
 
-// Determines whether driver is "ketmoqda" (from start point to end) or "kelmoqda" (from end to start)
-function determineDriverDirection(driver, prevDriverState, polyPoints, fallbackIndex = 0) {
-  const lat = Number(driver.latitude);
-  const lng = Number(driver.longitude);
-  const heading = Number(driver.heading);
+// Calculates cumulative distance along the polyline from start to the projection of (pLat, pLng)
+function getRouteProgress(pLat, pLng, polyPoints) {
+  if (!polyPoints || polyPoints.length < 2) return 0;
 
-  const routeBearing = getRouteSegmentBearing(lat, lng, polyPoints);
+  let bestSegmentIndex = 0;
+  let bestT = 0;
+  let minPerpDistance = Infinity;
 
-  // 1. Check movement vector if previous coordinates exist and driver moved >= 2 meters
-  if (prevDriverState && prevDriverState.prevLat && prevDriverState.prevLng) {
-    const distMoved = getDistanceMeters(prevDriverState.prevLat, prevDriverState.prevLng, lat, lng);
-    if (distMoved >= 2 && routeBearing !== null) {
-      const moveBearing = getBearing(prevDriverState.prevLat, prevDriverState.prevLng, lat, lng);
-      let diff = Math.abs(moveBearing - routeBearing) % 360;
-      if (diff > 180) diff = 360 - diff;
-      return diff < 90 ? 'ketmoqda' : 'kelmoqda';
+  const cumDistances = [0];
+  for (let i = 0; i < polyPoints.length - 1; i++) {
+    const segLen = getDistanceMeters(
+      polyPoints[i][0], polyPoints[i][1],
+      polyPoints[i + 1][0], polyPoints[i + 1][1]
+    );
+    cumDistances.push(cumDistances[i] + segLen);
+  }
+
+  for (let i = 0; i < polyPoints.length - 1; i++) {
+    const aLat = polyPoints[i][0];
+    const aLng = polyPoints[i][1];
+    const bLat = polyPoints[i + 1][0];
+    const bLng = polyPoints[i + 1][1];
+
+    const latFactor = 111320;
+    const lonFactor = 111320 * Math.cos(((aLat + bLat) / 2 * Math.PI) / 180);
+
+    const px = (pLng - aLng) * lonFactor;
+    const py = (pLat - aLat) * latFactor;
+    const bx = (bLng - aLng) * lonFactor;
+    const by = (bLat - aLat) * latFactor;
+
+    const abLenSq = bx * bx + by * by;
+    let t = 0;
+    let perpDist = 0;
+    if (abLenSq === 0) {
+      perpDist = Math.sqrt(px * px + py * py);
+    } else {
+      t = Math.max(0, Math.min(1, (px * bx + py * by) / abLenSq));
+      const projX = t * bx;
+      const projY = t * by;
+      const dx = px - projX;
+      const dy = py - projY;
+      perpDist = Math.sqrt(dx * dx + dy * dy);
+    }
+
+    if (perpDist < minPerpDistance) {
+      minPerpDistance = perpDist;
+      bestSegmentIndex = i;
+      bestT = t;
     }
   }
 
-  // 2. Check GPS heading from mobile sensor
-  if (heading && !isNaN(heading) && (driver.speed > 1 || heading > 0) && routeBearing !== null) {
-    let diff = Math.abs(heading - routeBearing) % 360;
-    if (diff > 180) diff = 360 - diff;
-    return diff < 90 ? 'ketmoqda' : 'kelmoqda';
+  const segLength = (cumDistances[bestSegmentIndex + 1] || cumDistances[bestSegmentIndex]) - cumDistances[bestSegmentIndex];
+  return cumDistances[bestSegmentIndex] + bestT * segLength;
+}
+
+// Determines whether driver is "ketmoqda" (from start point to end) or "kelmoqda" (from end to start)
+// Based strictly on terminals and progress along route (never mobile compass heading)
+function determineDriverDirection(driver, prevDriverState, polyPoints, fallbackIndex = 0) {
+  const lat = Number(driver.latitude);
+  const lng = Number(driver.longitude);
+
+  if (!polyPoints || polyPoints.length < 2 || isNaN(lat) || isNaN(lng)) {
+    return (prevDriverState && prevDriverState.direction) || (fallbackIndex % 2 === 0 ? 'ketmoqda' : 'kelmoqda');
   }
 
-  // 3. Keep previous direction if already identified
+  // 1. Check if backend database recorded terminal departure
+  if (driver.last_terminal === 'start') {
+    return 'ketmoqda';
+  }
+  if (driver.last_terminal === 'end') {
+    return 'kelmoqda';
+  }
+
+  const startPt = polyPoints[0];
+  const endPt = polyPoints[polyPoints.length - 1];
+  const distToStart = getDistanceMeters(lat, lng, startPt[0], startPt[1]);
+  const distToEnd = getDistanceMeters(lat, lng, endPt[0], endPt[1]);
+
+  // 2. Terminal arrival checks (within 350 meters of terminals)
+  if (distToStart <= 350) {
+    return 'ketmoqda'; // at start terminal -> heading to end
+  }
+  if (distToEnd <= 350) {
+    return 'kelmoqda'; // at end terminal -> heading back to start
+  }
+
+  // 3. Keep previous direction while mid-route so direction doesn't wiggle or jump
   if (prevDriverState && prevDriverState.direction) {
     return prevDriverState.direction;
   }
 
-  // 4. Position-based check: closer to start point = 'ketmoqda', closer to end point = 'kelmoqda'
-  if (polyPoints && polyPoints.length >= 2) {
-    const distToStart = getDistanceMeters(lat, lng, polyPoints[0][0], polyPoints[0][1]);
-    const distToEnd = getDistanceMeters(lat, lng, polyPoints[polyPoints.length - 1][0], polyPoints[polyPoints.length - 1][1]);
-    return distToStart <= distToEnd ? 'ketmoqda' : 'kelmoqda';
-  }
-
-  return fallbackIndex % 2 === 0 ? 'ketmoqda' : 'kelmoqda';
+  // 4. Fallback based on closest terminal
+  return distToStart <= distToEnd ? 'ketmoqda' : 'kelmoqda';
 }
 
 // 1:1 Yandex Maps style User Location Pointer with phone compass arrow
@@ -620,13 +675,11 @@ export default function MapComponent({
       const dirText = isKetmoqda ? 'Ketmoqda' : 'Kelmoqda';
 
       // Determine rotation angle for the arrow:
-      // If mobile GPS heading is active and moving -> use GPS heading
-      // Else -> follow the route segment road direction (forward for ketmoqda, reverse for kelmoqda)
+      // Strictly follows the road path in the direction of the route (Start -> End or End -> Start)
+      // Never wiggles or jumps based on mobile phone heading
       const routeBearing = getRouteSegmentBearing(lat, lng, routePolyPoints);
       let rotationAngle = 0;
-      if (driver.heading && !isNaN(driver.heading) && Number(driver.heading) > 0 && Number(driver.speed || 0) > 1) {
-        rotationAngle = Math.round(Number(driver.heading));
-      } else if (routeBearing !== null) {
+      if (routeBearing !== null) {
         rotationAngle = isKetmoqda ? Math.round(routeBearing) : Math.round((routeBearing + 180) % 360);
       } else {
         rotationAngle = isKetmoqda ? 0 : 180;

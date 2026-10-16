@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import VehicleCard from './VehicleCard';
 import { Loader2, Bus, AlertCircle, Navigation, MapPinOff } from 'lucide-react';
 
@@ -185,6 +185,7 @@ export default function RouteList({
   const [loading, setLoading] = useState(true);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState(null);
+  const prevDirectionsRef = useRef({});
 
   const fetchRoutes = async () => {
     try {
@@ -376,24 +377,35 @@ export default function RouteList({
       }
     }
 
-    // Direction calculation
+    // Direction calculation: Based on terminals and route progress (never mobile phone heading)
+    const driverId = String(driver.driver_id || driver.id);
     let direction = 'ketmoqda';
     const polyPoints = extractRoutePoints(driverRoute);
     if (polyPoints.length >= 2 && driver.latitude && driver.longitude) {
       const dLat = Number(driver.latitude);
       const dLng = Number(driver.longitude);
-      const heading = Number(driver.heading);
-      const routeBearing = getRouteSegmentBearing(dLat, dLng, polyPoints);
 
-      if (heading && !isNaN(heading) && (Number(driver.speed || 0) > 1 || heading > 0) && routeBearing !== null) {
-        let diff = Math.abs(heading - routeBearing) % 360;
-        if (diff > 180) diff = 360 - diff;
-        direction = diff < 90 ? 'ketmoqda' : 'kelmoqda';
+      if (driver.last_terminal === 'start') {
+        direction = 'ketmoqda';
+      } else if (driver.last_terminal === 'end') {
+        direction = 'kelmoqda';
       } else {
-        const distToStart = getDistanceMeters(dLat, dLng, polyPoints[0][0], polyPoints[0][1]);
-        const distToEnd = getDistanceMeters(dLat, dLng, polyPoints[polyPoints.length - 1][0], polyPoints[polyPoints.length - 1][1]);
-        direction = distToStart <= distToEnd ? 'ketmoqda' : 'kelmoqda';
+        const startPt = polyPoints[0];
+        const endPt = polyPoints[polyPoints.length - 1];
+        const distToStart = getDistanceMeters(dLat, dLng, startPt[0], startPt[1]);
+        const distToEnd = getDistanceMeters(dLat, dLng, endPt[0], endPt[1]);
+
+        if (distToStart <= 350) {
+          direction = 'ketmoqda';
+        } else if (distToEnd <= 350) {
+          direction = 'kelmoqda';
+        } else if (prevDirectionsRef.current[driverId]) {
+          direction = prevDirectionsRef.current[driverId];
+        } else {
+          direction = distToStart <= distToEnd ? 'ketmoqda' : 'kelmoqda';
+        }
       }
+      prevDirectionsRef.current[driverId] = direction;
     }
 
     // WHEN USER LOCATION IS ON: Calculate ETA and check if vehicle has already passed the user
