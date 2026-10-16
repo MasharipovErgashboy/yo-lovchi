@@ -53,10 +53,7 @@ export default function VehicleCard({
     };
   }
 
-  // Direction word (ketmoqda / kelmoqda)
-  const dirWord = (vehicle.directionText || 'Ketmoqda').toLowerCase();
   const stopWithGa = formatStopWithGa(nextStopName || currentStopName || "Bekat");
-  const offlineTitle = `${stopWithGa} ${dirWord}`;
 
   return (
     <div 
@@ -72,24 +69,18 @@ export default function VehicleCard({
           </div>
 
           <div>
-            {!isUserLocationActive ? (
-              <div className="vehicle-driver-name">
-                {offlineTitle}
-              </div>
-            ) : (
-              <div>
-                <div className="vehicle-driver-name">Sizgacha</div>
-                <div className="vehicle-sub-status">
-                  <span className="live-pulsing-dot" style={{ backgroundColor: vehicle.directionColor || '#0066FF' }}></span>
-                  <strong style={{ color: vehicle.directionColor || '#0066FF' }}>{vehicle.directionText || 'Ketmoqda'}</strong>
-                  {vehicle.userDistanceText && (
-                    <span className="vehicle-distance-text">
-                      • {vehicle.userDistanceText}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
+            <div className="vehicle-driver-name">
+              {isUserLocationActive ? 'Sizgacha' : stopWithGa}
+            </div>
+            <div className="vehicle-sub-status">
+              <span className="live-pulsing-dot" style={{ backgroundColor: vehicle.directionColor || '#0066FF' }}></span>
+              <strong style={{ color: vehicle.directionColor || '#0066FF' }}>{vehicle.directionText || 'Ketmoqda'}</strong>
+              {isUserLocationActive && vehicle.userDistanceText && (
+                <span className="vehicle-distance-text">
+                  • {vehicle.userDistanceText}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
