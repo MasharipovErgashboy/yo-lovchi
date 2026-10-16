@@ -8,11 +8,12 @@ export default function Messages({ onUnreadChange }) {
   const [loading, setLoading] = useState(true);
   const locallyReadIds = useRef(new Set());
 
-  const { phone, tgUserId } = useMemo(() => {
+  const { phone, tgUserId, driverId } = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
-    const p = params.get('phone');
-    const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-    return { phone: p, tgUserId: tgId };
+    const p = params.get('phone') || localStorage.getItem('yolovchi_driver_phone');
+    const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || params.get('telegram_id') || localStorage.getItem('yolovchi_driver_tg_id');
+    const dId = params.get('driver_id') || localStorage.getItem('yolovchi_driver_id');
+    return { phone: p, tgUserId: tgId, driverId: dId };
   }, []);
 
   const fetchMessages = async () => {
@@ -20,6 +21,7 @@ export default function Messages({ onUnreadChange }) {
       const q = new URLSearchParams();
       if (phone) q.set('phone', phone);
       if (tgUserId) q.set('telegram_id', tgUserId);
+      if (driverId) q.set('driver_id', driverId);
 
       const res = await fetch(`/api/driver-messages?${q.toString()}`);
       if (res.ok) {

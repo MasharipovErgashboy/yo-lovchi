@@ -166,21 +166,38 @@ function App() {
   // Real-time check if driver still exists in system & fetch assigned route
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const driverId = params.get('driver_id') || safeGetStorage('yolovchi_driver_id');
-    const phone = params.get('phone') || safeGetStorage('yolovchi_driver_phone');
-    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || params.get('telegram_id') || safeGetStorage('yolovchi_driver_tg_id');
+    const urlDriverId = params.get('driver_id');
+    const urlPhone = params.get('phone');
+    const urlTgId = params.get('telegram_id');
 
-    if (!phone && !tgUserId && !driverId) return;
+    // Overwrite storage immediately if fresh params arrive in URL
+    if (urlDriverId) safeSetStorage('yolovchi_driver_id', urlDriverId);
+    if (urlPhone) safeSetStorage('yolovchi_driver_phone', urlPhone);
+    if (urlTgId) safeSetStorage('yolovchi_driver_tg_id', urlTgId);
 
     const checkStatus = async () => {
       try {
-        let url = '/api/drivers/check?';
-        if (driverId) url += `driver_id=${driverId}`;
-        else if (phone) url += `phone=${encodeURIComponent(phone)}`;
-        else if (tgUserId) url += `telegram_id=${tgUserId}`;
+        const currentParams = new URLSearchParams(window.location.search);
+        const driverId = currentParams.get('driver_id') || safeGetStorage('yolovchi_driver_id');
+        const phone = currentParams.get('phone') || safeGetStorage('yolovchi_driver_phone');
+        const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || currentParams.get('telegram_id') || safeGetStorage('yolovchi_driver_tg_id');
 
-        const res = await fetch(url);
+        if (!phone && !tgUserId && !driverId) return;
+
+        const q = new URLSearchParams();
+        if (driverId) q.set('driver_id', driverId);
+        if (phone) q.set('phone', phone);
+        if (tgUserId) q.set('telegram_id', tgUserId);
+
+        const res = await fetch(`/api/drivers/check?${q.toString()}`);
         if (res.status === 404) {
+          // Clear cached local storage to prevent future stale ID mismatches
+          try {
+            localStorage.removeItem('yolovchi_driver_id');
+            localStorage.removeItem('yolovchi_driver_phone');
+            localStorage.removeItem('yolovchi_driver_tg_id');
+          } catch (e) {}
+
           setIsKickedOut(true);
           setTimeout(() => {
             if (window.Telegram?.WebApp?.close) {
@@ -188,6 +205,7 @@ function App() {
             }
           }, 2000);
         } else if (res.ok) {
+          setIsKickedOut(false);
           const data = await res.json();
           if (data && data.driver) {
             if (data.driver.id) safeSetStorage('yolovchi_driver_id', data.driver.id);

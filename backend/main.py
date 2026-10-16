@@ -213,6 +213,7 @@ async def approve_candidate(candidate_id: int):
         name=candidate["name"],
         surname=candidate["surname"],
         phone=candidate["phone"],
+        driver_id=candidate_id,
         pending_message_id=candidate.get("pending_message_id")
     )
     
@@ -268,6 +269,51 @@ async def remove_driver(driver_id: int):
     logger.info(f"Driver {driver_id} ({candidate['name']} {candidate['surname']}) deleted from database.")
     return {"success": success, "deleted_id": driver_id}
 
+def resolve_driver(
+    driver_id: Optional[int] = None,
+    telegram_id: Optional[int] = None,
+    phone: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Robust driver lookup.
+    Prioritizes telegram_id (immutable user ID on Telegram),
+    then driver_id (if valid and approved),
+    then phone number.
+    """
+    # 1. Check telegram_id first if approved
+    if telegram_id:
+        c = get_candidate_by_telegram_id(telegram_id)
+        if c and c.get("status") == "approved":
+            return c
+
+    # 2. Check driver_id if approved
+    if driver_id:
+        c = get_candidate_by_id(driver_id)
+        if c and c.get("status") == "approved":
+            return c
+
+    # 3. Check phone if approved
+    if phone:
+        c = get_candidate_by_phone(phone)
+        if c and c.get("status") == "approved":
+            return c
+
+    # 4. Fallback if not found approved: return candidate if exists in any state
+    if telegram_id:
+        c = get_candidate_by_telegram_id(telegram_id)
+        if c:
+            return c
+    if driver_id:
+        c = get_candidate_by_id(driver_id)
+        if c:
+            return c
+    if phone:
+        c = get_candidate_by_phone(phone)
+        if c:
+            return c
+
+    return None
+
 @app.get("/api/drivers/check")
 def check_driver_status(
     driver_id: Optional[int] = None,
@@ -275,13 +321,7 @@ def check_driver_status(
     telegram_id: Optional[int] = None
 ):
     """Check if driver is currently approved in the system and return full assigned route."""
-    candidate = None
-    if driver_id:
-        candidate = get_candidate_by_id(driver_id)
-    elif telegram_id:
-        candidate = get_candidate_by_telegram_id(telegram_id)
-    elif phone:
-        candidate = get_candidate_by_phone(phone)
+    candidate = resolve_driver(driver_id=driver_id, telegram_id=telegram_id, phone=phone)
     
     if not candidate or candidate.get("status") != "approved":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver is not approved or not found")
@@ -312,13 +352,7 @@ def check_driver_status(
 @app.post("/api/driver/capacity")
 def set_capacity(payload: DriverCapacityRequest):
     """Driver instantly changes vehicle capacity (bosh, ozroq, tola)."""
-    target_driver = None
-    if payload.driver_id:
-        target_driver = get_candidate_by_id(payload.driver_id)
-    elif payload.telegram_id:
-        target_driver = get_candidate_by_telegram_id(payload.telegram_id)
-    elif payload.phone:
-        target_driver = get_candidate_by_phone(payload.phone)
+    target_driver = resolve_driver(driver_id=payload.driver_id, telegram_id=payload.telegram_id, phone=payload.phone)
 
     if not target_driver:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
@@ -329,13 +363,7 @@ def set_capacity(payload: DriverCapacityRequest):
 @app.post("/api/driver/offline")
 def set_offline(payload: DriverOfflineRequest):
     """Driver turns off GPS tracking."""
-    target_driver = None
-    if payload.driver_id:
-        target_driver = get_candidate_by_id(payload.driver_id)
-    elif payload.telegram_id:
-        target_driver = get_candidate_by_telegram_id(payload.telegram_id)
-    elif payload.phone:
-        target_driver = get_candidate_by_phone(payload.phone)
+    target_driver = resolve_driver(driver_id=payload.driver_id, telegram_id=payload.telegram_id, phone=payload.phone)
 
     if not target_driver:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
@@ -445,14 +473,7 @@ def get_driver_messages_by_query(
     driver_id: Optional[int] = None
 ):
     """Fetch messages for Mini App by phone, telegram_id, or driver_id."""
-    target_driver = None
-    if driver_id:
-        target_driver = get_candidate_by_id(driver_id)
-    elif telegram_id:
-        target_driver = get_candidate_by_telegram_id(telegram_id)
-    elif phone:
-        target_driver = get_candidate_by_phone(phone)
-    
+    target_driver = resolve_driver(driver_id=driver_id, telegram_id=telegram_id, phone=phone)
     target_id = target_driver["id"] if target_driver else 0
     return get_driver_messages(target_id)
 
@@ -464,18 +485,9 @@ def read_message(
     driver_id: Optional[int] = None
 ):
     """Mark a message as read by a driver."""
-    d_id = driver_id
-    if not d_id:
-        target_driver = None
-        if telegram_id:
-            target_driver = get_candidate_by_telegram_id(telegram_id)
-        elif phone:
-            target_driver = get_candidate_by_phone(phone)
-        if target_driver:
-            d_id = target_driver["id"]
-    
-    if d_id:
-        mark_message_as_read(message_id, d_id)
+    target_driver = resolve_driver(driver_id=driver_id, telegram_id=telegram_id, phone=phone)
+    if target_driver:
+        mark_message_as_read(message_id, target_driver["id"])
     return {"success": True}
 
 # --- ROUTES & GPS ENDPOINTS ---
@@ -559,13 +571,7 @@ def assign_route(driver_id: int, payload: AssignRouteRequest):
 @app.post("/api/driver/location")
 def update_location(payload: DriverLocationUpdate):
     """Driver mobile/mini-app transmits live GPS coordinates."""
-    target_driver = None
-    if payload.driver_id:
-        target_driver = get_candidate_by_id(payload.driver_id)
-    elif payload.telegram_id:
-        target_driver = get_candidate_by_telegram_id(payload.telegram_id)
-    elif payload.phone:
-        target_driver = get_candidate_by_phone(payload.phone)
+    target_driver = resolve_driver(driver_id=payload.driver_id, telegram_id=payload.telegram_id, phone=payload.phone)
 
     if not target_driver:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")

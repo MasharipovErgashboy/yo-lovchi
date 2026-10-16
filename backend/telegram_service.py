@@ -28,6 +28,7 @@ async def send_approval_message(
     name: str,
     surname: str,
     phone: str,
+    driver_id: int = None,
     web_app_url: str = DEFAULT_WEB_APP_URL,
     pending_message_id: int = None
 ) -> bool:
@@ -36,8 +37,18 @@ async def send_approval_message(
     if pending_message_id:
         await delete_telegram_message(telegram_id, pending_message_id)
 
-    # Build WebApp URL with user query params
-    params = urlencode({"phone": phone, "name": name, "surname": surname})
+    # Build WebApp URL with user query params including driver_id and telegram_id
+    params_dict = {
+        "phone": phone,
+        "name": name,
+        "surname": surname
+    }
+    if driver_id:
+        params_dict["driver_id"] = driver_id
+    if telegram_id:
+        params_dict["telegram_id"] = telegram_id
+
+    params = urlencode(params_dict)
     full_url = f"{web_app_url}{'?' if '?' not in web_app_url else '&'}{params}"
 
     text = (
