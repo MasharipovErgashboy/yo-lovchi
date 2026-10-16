@@ -463,8 +463,26 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
       const existingState = busMarkersRef.current[id];
       const direction = determineDriverDirection(driver, existingState, routePolyPoints, dIdx);
       const isKetmoqda = direction === 'ketmoqda';
-      const busColor = isKetmoqda ? '#0066FF' : '#10B981';
+      
+      const forwardColor = selectedRoute?.arrow_color_forward || '#0066FF';
+      const backwardColor = selectedRoute?.arrow_color_backward || '#10B981';
+      const busColor = isKetmoqda ? forwardColor : backwardColor;
       const dirText = isKetmoqda ? 'Ketmoqda' : 'Kelmoqda';
+
+      // Determine rotation angle for the arrow:
+      // If mobile GPS heading is active and moving -> use GPS heading
+      // Else -> follow the route segment road direction (forward for ketmoqda, reverse for kelmoqda)
+      const routeBearing = getRouteSegmentBearing(lat, lng, routePolyPoints);
+      let rotationAngle = 0;
+      if (driver.heading && !isNaN(driver.heading) && Number(driver.heading) > 0 && Number(driver.speed || 0) > 1) {
+        rotationAngle = Math.round(Number(driver.heading));
+      } else if (routeBearing !== null) {
+        rotationAngle = isKetmoqda ? Math.round(routeBearing) : Math.round((routeBearing + 180) % 360);
+      } else {
+        rotationAngle = isKetmoqda ? 0 : 180;
+      }
+
+      const carPlate = driver.car_number ? String(driver.car_number).trim() : '';
 
       let capText = "Bo'sh joy ko'p";
       let capColor = "#10B981";
@@ -488,61 +506,47 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         </div>
       `;
 
+      const markerHtml = `
+        <div class="driver-arrow-container" title="${driver.name || 'Haydovchi'} - ${dirText}">
+          <div class="driver-arrow-wrap" style="transform: rotate(${rotationAngle}deg);">
+            <svg width="34" height="34" viewBox="0 0 32 32">
+              <path d="M16 2 L28 27 L16 21 L4 27 Z" fill="${busColor}" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          ${carPlate ? `<div class="driver-plate-pill" style="border-color: ${busColor};">${carPlate}</div>` : ''}
+        </div>
+      `;
+
       if (busMarkersRef.current[id]) {
         // Marker already exists -> smoothly update position without re-creating DOM
         const existing = busMarkersRef.current[id];
         existing.marker.setLatLng([lat, lng]);
-        if (existing.capacity !== driver.capacity || existing.direction !== direction) {
-          existing.marker.setPopupContent(popupHtml);
+        
+        const rotDiff = Math.abs((existing.rotationAngle || 0) - rotationAngle);
+        const shouldUpdateIcon = existing.direction !== direction || existing.capacity !== driver.capacity || rotDiff >= 4;
+
+        if (shouldUpdateIcon) {
+          existing.direction = direction;
           existing.capacity = driver.capacity;
-          if (existing.direction !== direction) {
-            existing.direction = direction;
-            existing.marker.setIcon(L.divIcon({
-              className: 'bus-marker-wrapper',
-              html: `
-                <div class="custom-bus-marker ${isKetmoqda ? 'going' : 'returning'}">
-                  <div class="bus-circle-icon" style="background: ${busColor}">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M8 6v6"></path>
-                      <path d="M15 6v6"></path>
-                      <path d="M2 12h19.6"></path>
-                      <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"></path>
-                      <circle cx="7" cy="18" r="2"></circle>
-                      <circle cx="15" cy="18" r="2"></circle>
-                    </svg>
-                  </div>
-                </div>
-              `,
-              iconSize: [36, 36],
-              iconAnchor: [18, 18]
-            }));
-          }
+          existing.rotationAngle = rotationAngle;
+          existing.marker.setIcon(L.divIcon({
+            className: 'bus-marker-wrapper',
+            html: markerHtml,
+            iconSize: carPlate ? [44, 48] : [34, 34],
+            iconAnchor: carPlate ? [22, 17] : [17, 17]
+          }));
         }
+        existing.marker.setPopupContent(popupHtml);
         existing.prevLat = lat;
         existing.prevLng = lng;
       } else {
         // Create new marker
-        const busIconHtml = `
-          <div class="custom-bus-marker ${isKetmoqda ? 'going' : 'returning'}">
-            <div class="bus-circle-icon" style="background: ${busColor}">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 6v6"></path>
-                <path d="M15 6v6"></path>
-                <path d="M2 12h19.6"></path>
-                <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"></path>
-                <circle cx="7" cy="18" r="2"></circle>
-                <circle cx="15" cy="18" r="2"></circle>
-              </svg>
-            </div>
-          </div>
-        `;
-
         const busMarker = L.marker([lat, lng], {
           icon: L.divIcon({
             className: 'bus-marker-wrapper',
-            html: busIconHtml,
-            iconSize: [36, 36],
-            iconAnchor: [18, 18]
+            html: markerHtml,
+            iconSize: carPlate ? [44, 48] : [34, 34],
+            iconAnchor: carPlate ? [22, 17] : [17, 17]
           }),
           zIndexOffset: 1000
         });
@@ -554,6 +558,7 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
           marker: busMarker,
           capacity: driver.capacity,
           direction: direction,
+          rotationAngle: rotationAngle,
           prevLat: lat,
           prevLng: lng
         };
@@ -711,16 +716,18 @@ export default function MapComponent({ initialRouteId = null, onBackToRoutes }) 
         style={{ bottom: `${floatingBottom}px` }}
       >
         <div className="legend-row">
-          <div className="legend-icon blue">
-            <Bus size={14} color="#0066FF" />
-            <span className="legend-arrow">➔</span>
+          <div className="legend-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="15" height="15" viewBox="0 0 32 32">
+              <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={selectedRoute?.arrow_color_forward || '#0066FF'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
+            </svg>
           </div>
           <span className="legend-label">Ketmoqda</span>
         </div>
         <div className="legend-row">
-          <div className="legend-icon green">
-            <Bus size={14} color="#10B981" />
-            <span className="legend-arrow">➔</span>
+          <div className="legend-icon" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="15" height="15" viewBox="0 0 32 32" style={{ transform: 'rotate(180deg)' }}>
+              <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={selectedRoute?.arrow_color_backward || '#10B981'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
+            </svg>
           </div>
           <span className="legend-label">Kelmoqda</span>
         </div>

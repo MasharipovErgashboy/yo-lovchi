@@ -164,6 +164,19 @@ def init_db():
                 ALTER TABLE candidates ADD COLUMN car_number VARCHAR(50);
             END IF;
             ALTER TABLE candidates ALTER COLUMN surname DROP NOT NULL;
+
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'routes' AND column_name = 'arrow_color_forward'
+            ) THEN
+                ALTER TABLE routes ADD COLUMN arrow_color_forward VARCHAR(50) DEFAULT '#0066FF';
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'routes' AND column_name = 'arrow_color_backward'
+            ) THEN
+                ALTER TABLE routes ADD COLUMN arrow_color_backward VARCHAR(50) DEFAULT '#10B981';
+            END IF;
         EXCEPTION
             WHEN OTHERS THEN NULL;
         END $$;
@@ -914,6 +927,8 @@ def create_route(
     stops: Optional[List[Any]] = None,
     polyline: Optional[List[Any]] = None,
     is_active: bool = True,
+    arrow_color_forward: str = "#0066FF",
+    arrow_color_backward: str = "#10B981",
     **kwargs
 ) -> Dict[str, Any]:
     """Create a new route with parsed stops and polyline."""
@@ -923,8 +938,8 @@ def create_route(
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO routes (number, name, direction, color, price, stops, polyline, is_active, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        INSERT INTO routes (number, name, direction, color, price, stops, polyline, is_active, arrow_color_forward, arrow_color_backward, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         RETURNING *;
     """, (
         str(number),
@@ -934,7 +949,9 @@ def create_route(
         str(price),
         json.dumps(processed_stops),
         json.dumps(processed_polyline),
-        bool(is_active)
+        bool(is_active),
+        str(arrow_color_forward or "#0066FF"),
+        str(arrow_color_backward or "#10B981")
     ))
     row = cursor.fetchone()
     conn.commit()
@@ -952,6 +969,8 @@ def update_route(
     stops: Optional[List[Any]] = None,
     polyline: Optional[List[Any]] = None,
     is_active: Optional[bool] = None,
+    arrow_color_forward: Optional[str] = None,
+    arrow_color_backward: Optional[str] = None,
     **kwargs
 ) -> Optional[Dict[str, Any]]:
     """Update existing route."""
@@ -965,6 +984,8 @@ def update_route(
     new_color = color if color is not None else existing["color"]
     new_price = price if price is not None else existing["price"]
     new_is_active = is_active if is_active is not None else existing["is_active"]
+    new_arrow_forward = arrow_color_forward if arrow_color_forward is not None else existing.get("arrow_color_forward", "#0066FF")
+    new_arrow_backward = arrow_color_backward if arrow_color_backward is not None else existing.get("arrow_color_backward", "#10B981")
 
     if stops is not None:
         target_stops = stops
@@ -982,7 +1003,8 @@ def update_route(
     cursor.execute("""
         UPDATE routes
         SET number = %s, name = %s, direction = %s, color = %s, price = %s,
-            stops = %s, polyline = %s, is_active = %s, updated_at = CURRENT_TIMESTAMP
+            stops = %s, polyline = %s, is_active = %s,
+            arrow_color_forward = %s, arrow_color_backward = %s, updated_at = CURRENT_TIMESTAMP
         WHERE id = %s
         RETURNING id;
     """, (
@@ -994,6 +1016,8 @@ def update_route(
         json.dumps(processed_stops),
         json.dumps(processed_poly),
         bool(new_is_active),
+        str(new_arrow_forward or "#0066FF"),
+        str(new_arrow_backward or "#10B981"),
         route_id
     ))
     conn.commit()

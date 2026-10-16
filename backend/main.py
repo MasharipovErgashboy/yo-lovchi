@@ -120,6 +120,8 @@ class RouteCreate(BaseModel):
     stops: Optional[List[Any]] = []
     polyline: Optional[List[List[float]]] = []
     is_active: Optional[bool] = True
+    arrow_color_forward: Optional[str] = "#0066FF"
+    arrow_color_backward: Optional[str] = "#10B981"
 
 class RouteUpdate(BaseModel):
     number: Optional[str] = None
@@ -130,6 +132,8 @@ class RouteUpdate(BaseModel):
     stops: Optional[List[Any]] = None
     polyline: Optional[List[List[float]]] = None
     is_active: Optional[bool] = None
+    arrow_color_forward: Optional[str] = None
+    arrow_color_backward: Optional[str] = None
 
 class AssignRouteRequest(BaseModel):
     route_id: Optional[int] = None
@@ -511,7 +515,9 @@ def create_new_route(payload: RouteCreate):
             price=payload.price or "",
             stops=payload.stops or [],
             polyline=payload.polyline or [],
-            is_active=payload.is_active if payload.is_active is not None else True
+            is_active=payload.is_active if payload.is_active is not None else True,
+            arrow_color_forward=payload.arrow_color_forward or "#0066FF",
+            arrow_color_backward=payload.arrow_color_backward or "#10B981"
         )
         return route
     except Exception as e:
@@ -534,7 +540,9 @@ def update_existing_route(route_id: int, payload: RouteUpdate):
         price=payload.price,
         stops=payload.stops,
         polyline=payload.polyline,
-        is_active=payload.is_active
+        is_active=payload.is_active,
+        arrow_color_forward=payload.arrow_color_forward,
+        arrow_color_backward=payload.arrow_color_backward
     )
     return updated
 

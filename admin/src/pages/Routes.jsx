@@ -28,6 +28,8 @@ export default function RoutesPage() {
   const [newRouteName, setNewRouteName] = useState('');
   const [newRouteDirection, setNewRouteDirection] = useState('');
   const [newRouteColor, setNewRouteColor] = useState('#3b82f6');
+  const [arrowColorForward, setArrowColorForward] = useState('#0066FF');
+  const [arrowColorBackward, setArrowColorBackward] = useState('#10B981');
   const [newStops, setNewStops] = useState([
     { name: '', raw: '' },
     { name: '', raw: '' }
@@ -57,6 +59,8 @@ export default function RoutesPage() {
     setNewRouteName('');
     setNewRouteDirection('');
     setNewRouteColor('#3b82f6');
+    setArrowColorForward('#0066FF');
+    setArrowColorBackward('#10B981');
     setNewStops([
       { name: '1-bekat (Bosh bekat)', raw: '' },
       { name: 'Oxirgi bekat', raw: '' }
@@ -70,6 +74,8 @@ export default function RoutesPage() {
     setNewRouteName(route.name || '');
     setNewRouteDirection(route.direction || '');
     setNewRouteColor(route.color || '#3b82f6');
+    setArrowColorForward(route.arrow_color_forward || '#0066FF');
+    setArrowColorBackward(route.arrow_color_backward || '#10B981');
     
     // Normalize stops
     let formattedStops = [];
@@ -143,6 +149,8 @@ export default function RoutesPage() {
         name: String(newRouteName || `${newRouteNum}-marshrut`).trim(),
         direction: String(newRouteDirection).trim(),
         color: newRouteColor,
+        arrow_color_forward: arrowColorForward,
+        arrow_color_backward: arrowColorBackward,
         stops: newStops.map((s, idx) => ({
           name: s.name && s.name.trim() !== '' ? s.name.trim() : `Bekat ${idx + 1}`,
           raw: s.raw.trim()
@@ -215,6 +223,28 @@ export default function RoutesPage() {
                         {route.direction}
                       </div>
                     )}
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ 
+                        display: 'inline-flex', alignItems: 'center', gap: '5px', 
+                        background: 'rgba(255,255,255,0.04)', padding: '2px 8px', borderRadius: '6px',
+                        fontSize: '11px', border: '1px solid rgba(255,255,255,0.08)'
+                      }}>
+                        <svg width="12" height="12" viewBox="0 0 32 32">
+                          <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={route.arrow_color_forward || '#0066FF'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
+                        </svg>
+                        Ketmoqda: <strong style={{ color: route.arrow_color_forward || '#0066FF' }}>{route.arrow_color_forward || '#0066FF'}</strong>
+                      </span>
+                      <span style={{ 
+                        display: 'inline-flex', alignItems: 'center', gap: '5px', 
+                        background: 'rgba(255,255,255,0.04)', padding: '2px 8px', borderRadius: '6px',
+                        fontSize: '11px', border: '1px solid rgba(255,255,255,0.08)'
+                      }}>
+                        <svg width="12" height="12" viewBox="0 0 32 32" style={{ transform: 'rotate(180deg)' }}>
+                          <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={route.arrow_color_backward || '#10B981'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
+                        </svg>
+                        Kelmoqda: <strong style={{ color: route.arrow_color_backward || '#10B981' }}>{route.arrow_color_backward || '#10B981'}</strong>
+                      </span>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button 
@@ -348,11 +378,111 @@ export default function RoutesPage() {
                     ))}
                     <input 
                       type="color" 
-                      value={newRouteColor}
+                      value={newRouteColor} 
                       onChange={(e) => setNewRouteColor(e.target.value)}
                       style={{ width: '32px', height: '32px', border: 'none', background: 'transparent', cursor: 'pointer' }}
                       title="Boshqa rang tanlash"
                     />
+                  </div>
+                </div>
+
+                {/* Arrow Colors for Drivers on Passenger Map */}
+                <div style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                  <label style={{ display: 'block', marginBottom: '4px', color: 'var(--text-main)', fontSize: '13px', fontWeight: 600 }}>
+                    Xaritadagi haydovchilar strelkalari ranglari
+                  </label>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginBottom: '14px' }}>
+                    Yo'lovchi ilovasida haydovchilar strelka shaklida ko'rinadi. Qaysi yo'nalishda qanday rangda chiqishini belgilang.
+                  </p>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                    {/* Ketmoqda */}
+                    <div style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '12px 14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <svg width="18" height="18" viewBox="0 0 32 32">
+                            <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={arrowColorForward} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
+                          </svg>
+                          "Ketmoqda" strelkasi
+                        </span>
+                        <span style={{ fontSize: '12px', fontFamily: 'monospace', color: arrowColorForward, fontWeight: 'bold' }}>
+                          {arrowColorForward}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '7px', alignItems: 'center' }}>
+                        {['#0066FF', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'].map(col => (
+                          <button
+                            key={col}
+                            type="button"
+                            onClick={() => setArrowColorForward(col)}
+                            style={{
+                              width: '26px',
+                              height: '26px',
+                              borderRadius: '50%',
+                              background: col,
+                              border: arrowColorForward === col ? '2px solid #ffffff' : '1px solid transparent',
+                              boxShadow: arrowColorForward === col ? '0 0 8px rgba(255,255,255,0.4)' : 'none',
+                              cursor: 'pointer',
+                              padding: 0
+                            }}
+                          />
+                        ))}
+                        <input 
+                          type="color" 
+                          value={arrowColorForward} 
+                          onChange={(e) => setArrowColorForward(e.target.value)} 
+                          style={{ width: '28px', height: '28px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                          title="Boshqa rang"
+                        />
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                        Bosh bekatdan oxirgi bekatga ketayotganda
+                      </div>
+                    </div>
+
+                    {/* Kelmoqda */}
+                    <div style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '12px 14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <svg width="18" height="18" viewBox="0 0 32 32" style={{ transform: 'rotate(180deg)' }}>
+                            <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={arrowColorBackward} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
+                          </svg>
+                          "Kelmoqda" strelkasi
+                        </span>
+                        <span style={{ fontSize: '12px', fontFamily: 'monospace', color: arrowColorBackward, fontWeight: 'bold' }}>
+                          {arrowColorBackward}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '7px', alignItems: 'center' }}>
+                        {['#10B981', '#0066FF', '#06B6D4', '#F59E0B', '#EF4444', '#EC4899'].map(col => (
+                          <button
+                            key={col}
+                            type="button"
+                            onClick={() => setArrowColorBackward(col)}
+                            style={{
+                              width: '26px',
+                              height: '26px',
+                              borderRadius: '50%',
+                              background: col,
+                              border: arrowColorBackward === col ? '2px solid #ffffff' : '1px solid transparent',
+                              boxShadow: arrowColorBackward === col ? '0 0 8px rgba(255,255,255,0.4)' : 'none',
+                              cursor: 'pointer',
+                              padding: 0
+                            }}
+                          />
+                        ))}
+                        <input 
+                          type="color" 
+                          value={arrowColorBackward} 
+                          onChange={(e) => setArrowColorBackward(e.target.value)} 
+                          style={{ width: '28px', height: '28px', border: 'none', background: 'transparent', cursor: 'pointer' }}
+                          title="Boshqa rang"
+                        />
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                        Oxirgi bekatdan bosh bekatga qaytayotganda
+                      </div>
+                    </div>
                   </div>
                 </div>
 

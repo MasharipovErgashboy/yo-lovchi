@@ -145,7 +145,7 @@ export default function RouteList({ onSelectRoute }) {
       etaMinutes,
       direction,
       directionText: direction === 'ketmoqda' ? 'Ketmoqda' : 'Kelmoqda',
-      directionColor: direction === 'ketmoqda' ? '#0066FF' : '#10B981'
+      directionColor: direction === 'ketmoqda' ? (selectedRoute?.arrow_color_forward || '#0066FF') : (selectedRoute?.arrow_color_backward || '#10B981')
     };
   });
 
