@@ -501,12 +501,6 @@ export default function MapComponent({
           zIndexOffset: 2500
         });
 
-        userMarker.bindPopup(`
-          <div style="font-family: sans-serif; font-size: 13px; font-weight: 600; color: #F03838; padding: 4px 6px; text-align: center;">
-            📍 Sizning joylashuvingiz
-          </div>
-        `);
-
         userMarker.addTo(userLayerGroupRef.current);
         userMarkerRef.current = userMarker;
       }
@@ -801,11 +795,6 @@ export default function MapComponent({
               zIndexOffset: 2500
             }).addTo(userLayerGroupRef.current);
             userMarkerRef.current = marker;
-            marker.bindPopup(`
-              <div style="font-family: sans-serif; font-size: 13px; font-weight: 600; color: #F03838; padding: 4px 6px; text-align: center;">
-                📍 Sizning joylashuvingiz
-              </div>
-            `).openPopup();
           }
         },
         (err) => alert("Joylashuvingizni aniqlab bo'lmadi: " + err.message),
