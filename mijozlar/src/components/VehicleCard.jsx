@@ -74,11 +74,7 @@ export default function VehicleCard({
           <div>
             {!isUserLocationActive ? (
               <div className="vehicle-driver-name">
-                <span 
-                  className="live-pulsing-dot" 
-                  style={{ backgroundColor: vehicle.directionColor || '#0066FF', flexShrink: 0 }}
-                ></span>
-                <span>{offlineTitle}</span>
+                {offlineTitle}
               </div>
             ) : (
               <div>

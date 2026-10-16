@@ -875,16 +875,12 @@
 }
 
 .vehicle-driver-name {
-  font-size: 16.5px;
+  font-size: 18.5px;
   font-weight: 800;
   color: var(--text-primary);
   margin-bottom: 0px;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.3px;
   line-height: 1.25;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
 }
 
 .vehicle-distance-text {
