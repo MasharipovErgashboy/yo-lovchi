@@ -451,10 +451,10 @@ def save_candidate(telegram_id: int, name: str, surname: str, phone: str, pendin
     if existing:
         cursor.execute("""
             UPDATE candidates 
-            SET name = %s, surname = %s, car_number = %s, phone = %s, status = 'pending', pending_message_id = %s, updated_at = %s
+            SET name = %s, surname = %s, car_number = %s, phone = %s, status = 'pending', pending_message_id = %s, created_at = %s, updated_at = %s
             WHERE telegram_id = %s
             RETURNING id;
-        """, (name, final_surname, final_car_number, phone, pending_message_id, now, telegram_id))
+        """, (name, final_surname, final_car_number, phone, pending_message_id, now, now, telegram_id))
         candidate_id = cursor.fetchone()["id"]
     else:
         cursor.execute("""

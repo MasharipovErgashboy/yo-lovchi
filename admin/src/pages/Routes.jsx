@@ -55,6 +55,10 @@ export default function RoutesPage() {
   }, []);
 
   const openAddModal = () => {
+    if (routes.length >= 1) {
+      alert("Tizimda faqat bitta marshrut yaratish mumkin!");
+      return;
+    }
     setEditingRouteId(null);
     setNewRouteNum('');
     setNewRouteName('');
@@ -223,7 +227,20 @@ export default function RoutesPage() {
     <div className="page-container">
       <div className="routes-header-actions">
         <h2 style={{ fontSize: '24px', fontWeight: 600 }}>Barcha Marshrutlar</h2>
-        <button className="btn-primary" onClick={openAddModal}>
+        <button 
+          className="btn-primary" 
+          onClick={routes.length >= 1 ? undefined : openAddModal}
+          disabled={routes.length >= 1}
+          style={routes.length >= 1 ? {
+            background: '#475569',
+            borderColor: '#334155',
+            color: '#94a3b8',
+            cursor: 'not-allowed',
+            opacity: 0.65,
+            boxShadow: 'none'
+          } : {}}
+          title={routes.length >= 1 ? "Faqat 1 ta marshrut yaratish mumkin" : "Yangi marshrut qo'shish"}
+        >
           <Plus size={20} /> Yangi marshrut qo'shish
         </button>
       </div>

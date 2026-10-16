@@ -545,6 +545,12 @@ def get_route(route_id: int):
 @app.post("/api/routes", status_code=status.HTTP_201_CREATED)
 def create_new_route(payload: RouteCreate):
     """Admin creates a new route."""
+    existing_routes = get_routes()
+    if existing_routes and len(existing_routes) >= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tizimda faqat bitta marshrut yaratish mumkin!"
+        )
     try:
         route = create_route(
             number=payload.number,

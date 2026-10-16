@@ -5,6 +5,27 @@ import './PagesCommon.css';
 
 const BACKEND_URL = "";
 
+const formatRealTime = (dateStr) => {
+  if (!dateStr) return 'Hozirgina';
+  try {
+    let cleanStr = String(dateStr).trim();
+    if (!cleanStr.includes('T')) {
+      cleanStr = cleanStr.replace(' ', 'T');
+    }
+    const d = new Date(cleanStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
+  } catch {
+    return dateStr;
+  }
+};
+
 export default function Candidates() {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -170,7 +191,7 @@ export default function Candidates() {
                         {cand.status === 'pending' ? 'Yangi' : cand.status}
                       </span>
                     </td>
-                    <td>{cand.created_at || 'Hozirgina'}</td>
+                    <td style={{ whiteSpace: 'nowrap', fontWeight: '500' }}>{formatRealTime(cand.created_at)}</td>
                     <td>
                       <button 
                         className="action-btn view"
@@ -213,7 +234,7 @@ export default function Candidates() {
                   <Phone size={16} /> {selectedCandidate.phone}
                 </div>
                 <div style={{ marginTop: '12px', fontSize: '13px', color: 'var(--text-muted)' }}>
-                  Arizaning yuborilgan vaqti: {selectedCandidate.created_at}
+                  🕒 Arizaning yuborilgan vaqti: <strong style={{ color: 'var(--text-primary, #fff)' }}>{formatRealTime(selectedCandidate.created_at)}</strong>
                 </div>
               </div>
             </div>
