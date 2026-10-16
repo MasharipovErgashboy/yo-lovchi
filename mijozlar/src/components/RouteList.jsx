@@ -242,6 +242,13 @@ export default function RouteList({
     setIsLocating(true);
     setLocationError(null);
 
+    // Request iOS orientation permission on user tap
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        DeviceOrientationEvent.requestPermission().catch(() => {});
+      } catch (e) {}
+    }
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setIsLocating(false);

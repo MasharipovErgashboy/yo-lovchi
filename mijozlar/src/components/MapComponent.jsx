@@ -147,6 +147,22 @@ function determineDriverDirection(driver, prevDriverState, polyPoints, fallbackI
   return fallbackIndex % 2 === 0 ? 'ketmoqda' : 'kelmoqda';
 }
 
+// 1:1 Yandex Maps style User Location Pointer with phone compass arrow
+const makeUserMarkerHtml = (heading = 0) => `
+  <div class="user-yandex-marker-wrapper">
+    <div class="user-location-arrow" style="transform: rotate(${heading}deg);">
+      <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Vibrant Red Triangular Arrow Pointer -->
+        <path d="M22 2L32 17L12 17Z" fill="#F03838" />
+        <!-- Crisp White Outer Ring -->
+        <circle cx="22" cy="22" r="12" fill="#FFFFFF" />
+        <!-- Vibrant Red Center Core -->
+        <circle cx="22" cy="22" r="7.5" fill="#F03838" />
+      </svg>
+    </div>
+  </div>
+`;
+
 export default function MapComponent({ 
   initialRouteId = null, 
   onBackToRoutes,
@@ -158,6 +174,9 @@ export default function MapComponent({
   const routeLayerGroupRef = useRef(null);
   const busLayerGroupRef = useRef(null);
   const userLayerGroupRef = useRef(null);
+  const userMarkerRef = useRef(null);
+  const userHeadingRef = useRef(0);
+  const watchIdRef = useRef(null);
   const busMarkersRef = useRef({});
   const tileLayerRef = useRef(null);
 
@@ -334,41 +353,107 @@ export default function MapComponent({
     tileLayerRef.current.bringToBack();
   }, [activeLayer]);
 
+  // Set up Device Orientation (Compass) listener to rotate user pointer in real-time
+  useEffect(() => {
+    let lastHeading = null;
+
+    const updateArrowRotation = (rawHeading) => {
+      if (rawHeading === null || isNaN(rawHeading)) return;
+      let h = Math.round(Number(rawHeading)) % 360;
+      if (h < 0) h += 360;
+
+      // Small jitter deadband: only update if changed by >= 1.5 degrees
+      if (lastHeading !== null && Math.abs(h - lastHeading) < 1.5) return;
+      lastHeading = h;
+      userHeadingRef.current = h;
+
+      const markerEl = userMarkerRef.current?.getElement();
+      if (markerEl) {
+        const arrowEl = markerEl.querySelector('.user-location-arrow');
+        if (arrowEl) {
+          arrowEl.style.transform = `rotate(${h}deg)`;
+        }
+      }
+    };
+
+    const handleOrientation = (e) => {
+      let heading = null;
+
+      if (typeof e.webkitCompassHeading !== 'undefined' && e.webkitCompassHeading !== null) {
+        // iOS: webkitCompassHeading is magnetic compass heading (0 = North, clockwise)
+        heading = e.webkitCompassHeading;
+      } else if (e.alpha !== null && typeof e.alpha !== 'undefined') {
+        // Android / standard alpha (alpha is counter-clockwise around Z)
+        heading = (360 - e.alpha) % 360;
+      }
+
+      if (heading !== null) {
+        updateArrowRotation(heading);
+      }
+    };
+
+    if ('ondeviceorientationabsolute' in window) {
+      window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+    }
+    window.addEventListener('deviceorientation', handleOrientation, true);
+
+    // Watch position GPS heading as fallback when device is in motion
+    if ('geolocation' in navigator) {
+      try {
+        const wId = navigator.geolocation.watchPosition(
+          (pos) => {
+            if (pos.coords.heading !== null && !isNaN(pos.coords.heading) && pos.coords.heading >= 0) {
+              updateArrowRotation(pos.coords.heading);
+            }
+          },
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 2000 }
+        );
+        watchIdRef.current = wId;
+      } catch (e) {}
+    }
+
+    return () => {
+      if ('ondeviceorientationabsolute' in window) {
+        window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
+      }
+      window.removeEventListener('deviceorientation', handleOrientation, true);
+      if (watchIdRef.current !== null && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, []);
+
   // Render User My Location Marker when user location is active
   useEffect(() => {
     if (!mapInstance.current || !userLayerGroupRef.current) return;
 
     userLayerGroupRef.current.clearLayers();
+    userMarkerRef.current = null;
 
     if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng) {
       const lat = Number(userLocation.lat);
       const lng = Number(userLocation.lng);
 
       if (!isNaN(lat) && !isNaN(lng)) {
-        const userIconHtml = `
-          <div class="user-my-location-marker">
-            <div class="user-location-pulse"></div>
-            <div class="user-location-dot"></div>
-          </div>
-        `;
-
         const userMarker = L.marker([lat, lng], {
           icon: L.divIcon({
             className: 'user-marker-wrapper',
-            html: userIconHtml,
-            iconSize: [36, 36],
-            iconAnchor: [18, 18]
+            html: makeUserMarkerHtml(userHeadingRef.current || 0),
+            iconSize: [44, 44],
+            iconAnchor: [22, 22]
           }),
-          zIndexOffset: 1200
+          zIndexOffset: 2500
         });
 
         userMarker.bindPopup(`
-          <div style="font-family: sans-serif; font-size: 13px; font-weight: 600; color: #0066FF; padding: 4px 6px; text-align: center;">
+          <div style="font-family: sans-serif; font-size: 13px; font-weight: 600; color: #F03838; padding: 4px 6px; text-align: center;">
             📍 Sizning joylashuvingiz
           </div>
         `);
 
         userMarker.addTo(userLayerGroupRef.current);
+        userMarkerRef.current = userMarker;
       }
     }
   }, [isUserLocationActive, userLocation]);
@@ -631,6 +716,13 @@ export default function MapComponent({
 
   // Center map on user GPS location
   const handleLocateMe = () => {
+    // Request device orientation permission on iOS if available
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        DeviceOrientationEvent.requestPermission().catch(() => {});
+      } catch (e) {}
+    }
+
     if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng && mapInstance.current) {
       mapInstance.current.setView([Number(userLocation.lat), Number(userLocation.lng)], 16, { animate: true });
       setToastMessage("Joylashuvingizga o'tildi");
@@ -646,23 +738,18 @@ export default function MapComponent({
           
           if (userLayerGroupRef.current) {
             userLayerGroupRef.current.clearLayers();
-            const userIconHtml = `
-              <div class="user-my-location-marker">
-                <div class="user-location-pulse"></div>
-                <div class="user-location-dot"></div>
-              </div>
-            `;
             const marker = L.marker(userLatLng, {
               icon: L.divIcon({
                 className: 'user-marker-wrapper',
-                html: userIconHtml,
-                iconSize: [36, 36],
-                iconAnchor: [18, 18]
+                html: makeUserMarkerHtml(userHeadingRef.current || 0),
+                iconSize: [44, 44],
+                iconAnchor: [22, 22]
               }),
-              zIndexOffset: 1200
+              zIndexOffset: 2500
             }).addTo(userLayerGroupRef.current);
+            userMarkerRef.current = marker;
             marker.bindPopup(`
-              <div style="font-family: sans-serif; font-size: 13px; font-weight: 600; color: #0066FF; padding: 4px 6px; text-align: center;">
+              <div style="font-family: sans-serif; font-size: 13px; font-weight: 600; color: #F03838; padding: 4px 6px; text-align: center;">
                 📍 Sizning joylashuvingiz
               </div>
             `).openPopup();
