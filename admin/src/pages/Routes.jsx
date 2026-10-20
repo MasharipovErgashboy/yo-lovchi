@@ -370,8 +370,8 @@ export default function RoutesPage() {
             
             <form onSubmit={handleSaveRoute}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                <div style={{ display: 'flex', gap: '14px' }}>
-                  <div style={{ width: '130px' }}>
+                <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 120px' }}>
                     <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '13px' }}>Marshrut No</label>
                     <input 
                       type="text" 
@@ -387,7 +387,7 @@ export default function RoutesPage() {
                       required
                     />
                   </div>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: '2 1 180px' }}>
                     <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '13px' }}>Marshrut nomi</label>
                     <input 
                       type="text" 

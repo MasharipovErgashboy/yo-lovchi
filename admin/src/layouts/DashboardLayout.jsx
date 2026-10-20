@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -7,7 +7,9 @@ import {
   MapPin, 
   MessageSquare,
   LogOut,
-  Headphones
+  Headphones,
+  Menu,
+  X
 } from 'lucide-react';
 import './DashboardLayout.css';
 
@@ -21,10 +23,17 @@ const navItems = [
 ];
 
 export default function DashboardLayout({ onLogout }) {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
   const currentNav = navItems.find(item => item.path === location.pathname) || navItems[0];
 
+  // Close mobile drawer on route change
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
+
   const handleLogoutClick = () => {
+    setIsMobileMenuOpen(false);
     if (onLogout) {
       onLogout();
     } else {
@@ -36,11 +45,27 @@ export default function DashboardLayout({ onLogout }) {
 
   return (
     <div className="layout-container">
-      {/* Sidebar */}
-      <aside className="sidebar">
+      {/* Mobile Drawer Backdrop */}
+      {isMobileMenuOpen && (
+        <div 
+          className="sidebar-backdrop" 
+          onClick={() => setIsMobileMenuOpen(false)} 
+        />
+      )}
+
+      {/* Sidebar (Desktop fixed / Mobile sliding drawer) */}
+      <aside className={`sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-logo">
           <div className="logo-icon">Y</div>
           <h2>Yo'lovchi</h2>
+          <button 
+            type="button"
+            className="sidebar-close-btn" 
+            onClick={() => setIsMobileMenuOpen(false)}
+            aria-label="Menyuni yopish"
+          >
+            <X size={20} />
+          </button>
         </div>
         
         <nav className="sidebar-nav">
@@ -50,6 +75,7 @@ export default function DashboardLayout({ onLogout }) {
               to={item.path} 
               className={({isActive}) => `nav-item ${isActive ? 'active' : ''}`}
               end={item.path === '/'}
+              onClick={() => setIsMobileMenuOpen(false)}
             >
               {item.icon}
               <span>{item.label}</span>
@@ -68,8 +94,25 @@ export default function DashboardLayout({ onLogout }) {
       {/* Main Content Area */}
       <main className="main-content">
         <header className="topbar">
-          <div className="topbar-title">
-            <h1>{currentNav.label}</h1>
+          <div className="topbar-left">
+            <button 
+              type="button"
+              className="mobile-menu-btn" 
+              onClick={() => setIsMobileMenuOpen(prev => !prev)}
+              aria-label="Menyuni ochish"
+            >
+              <Menu size={22} />
+            </button>
+            <div className="topbar-title">
+              <h1>{currentNav.label}</h1>
+            </div>
+          </div>
+
+          <div className="topbar-right">
+            <div className="user-profile-compact">
+              <div className="avatar-compact">A</div>
+              <span className="user-name-compact">Admin</span>
+            </div>
           </div>
         </header>
 
@@ -78,5 +121,5 @@ export default function DashboardLayout({ onLogout }) {
         </div>
       </main>
     </div>
-  )
+  );
 }

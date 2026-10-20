@@ -117,3 +117,26 @@
   background: #10b981;
   border-color: #10b981;
 }
+
+/* Responsive Routes Styles */
+@media (max-width: 768px) {
+  .routes-header-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .routes-header-actions .btn-primary {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .routes-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .route-card {
+    padding: 16px;
+  }
+}

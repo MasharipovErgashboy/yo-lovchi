@@ -190,3 +190,33 @@
   background: rgba(239, 68, 68, 0.1);
 }
 
+/* Responsive Messages Styles */
+@media (max-width: 1024px) {
+  .messages-layout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    height: auto;
+  }
+
+  .messages-tabs-container {
+    width: 100%;
+  }
+
+  .messages-tab-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  .radio-group {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .btn-send {
+    width: 100%;
+    justify-content: center;
+  }
+}
+

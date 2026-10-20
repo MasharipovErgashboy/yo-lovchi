@@ -13,7 +13,8 @@ import {
   Clock, 
   AlertCircle,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  ArrowLeft
 } from 'lucide-react';
 import './PagesCommon.css';
 import './Support.css';
@@ -177,7 +178,7 @@ export default function Support() {
   };
 
   return (
-    <div className="page-container support-page">
+    <div className={`page-container support-page ${selectedInquiry ? 'has-selected' : 'none-selected'}`}>
       {/* Sidebar: Chats List */}
       <div className="support-sidebar glass-card">
         <div className="support-header">
@@ -280,6 +281,14 @@ export default function Support() {
           <>
             {/* Topbar */}
             <div className="chat-topbar">
+              <button 
+                type="button" 
+                className="chat-back-btn" 
+                onClick={() => setSelectedId(null)}
+              >
+                <ArrowLeft size={18} />
+                <span>Ro'yxatga qaytish</span>
+              </button>
               <div className="chat-topbar-user">
                 <div className={`chat-avatar large ${selectedInquiry.sender_type === 'driver' ? 'driver' : 'passenger'}`}>
                   {selectedInquiry.sender_type === 'driver' ? <Car size={24} /> : <User size={24} />}
