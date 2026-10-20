@@ -176,7 +176,6 @@ function App() {
       <Header 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
-        isUserLocationActive={isUserLocationActive} 
       />
       
       <ErrorBoundary>

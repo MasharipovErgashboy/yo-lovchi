@@ -38,17 +38,9 @@
 
 .tab-btn.active {
   color: var(--white);
-  transition: all 0.25s ease;
-}
-
-.tab-btn.active.active-offline {
-  background-color: #EF4444 !important;
-  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35) !important;
-}
-
-.tab-btn.active.active-online {
   background-color: var(--blue-primary) !important;
   box-shadow: 0 4px 14px rgba(0, 102, 255, 0.3) !important;
+  transition: all 0.25s ease;
 }
 
 .route-list {
