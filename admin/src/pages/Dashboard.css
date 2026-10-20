@@ -218,6 +218,11 @@
 }
 
 @media (max-width: 480px) {
+  .dashboard-page {
+    gap: 16px;
+    padding-top: 6px;
+  }
+
   .stats-grid {
     grid-template-columns: 1fr;
     gap: 10px;

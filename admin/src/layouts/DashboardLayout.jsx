@@ -99,9 +99,9 @@ export default function DashboardLayout({ onLogout }) {
               type="button"
               className="mobile-menu-btn" 
               onClick={() => setIsMobileMenuOpen(prev => !prev)}
-              aria-label="Menyuni ochish"
+              aria-label={isMobileMenuOpen ? "Menyuni yopish" : "Menyuni ochish"}
             >
-              <Menu size={22} />
+              {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
             <div className="topbar-title">
               <h1>{currentNav.label}</h1>
