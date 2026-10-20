@@ -236,7 +236,7 @@ export default function RouteList({
 
   const activeRoute = (selectedRouteId && routes.find(r => r.id === selectedRouteId)) || routes[0];
 
-  // Location Toggle handler with 300 meter route proximity requirement
+  // Location Toggle handler with 2 km (2000 meter) route proximity requirement
   const handleToggleLocation = () => {
     if (isUserLocationActive) {
       if (setIsUserLocationActive) setIsUserLocationActive(false);
@@ -278,14 +278,15 @@ export default function RouteList({
         const minDist = getMinDistanceToRoute(uLat, uLng, points);
         const roundedDist = Math.round(minDist);
 
-        if (minDist > 300) {
-          // Reject activation if more than 300m away
+        if (minDist > 2000) {
+          // Reject activation if more than 2 km away
           if (setIsUserLocationActive) setIsUserLocationActive(false);
           if (setUserLocation) setUserLocation(null);
           if (setUserDistanceToRoute) setUserDistanceToRoute(roundedDist);
-          setLocationError(`Siz marshrut chizig'idan ${roundedDist} metr uzoqdasiz. Joylashuv faqat marshrutga 300 metr masofa ichida yoqiladi!`);
+          const distText = roundedDist >= 1000 ? `${(roundedDist / 1000).toFixed(1)} km` : `${roundedDist} metr`;
+          setLocationError(`Siz marshrut chizig'idan ${distText} uzoqdasiz. Joylashuv faqat marshrutga 2 km masofa ichida yoqiladi!`);
         } else {
-          // Accept activation within 300m
+          // Accept activation within 2 km
           if (setIsUserLocationActive) setIsUserLocationActive(true);
           if (setUserLocation) setUserLocation({ lat: uLat, lng: uLng });
           if (setUserDistanceToRoute) setUserDistanceToRoute(roundedDist);
@@ -607,8 +608,8 @@ export default function RouteList({
             </div>
             <div className="location-widget-desc">
               {isUserLocationActive 
-                ? `Marshrutgacha: ${userDistanceToRoute || 0} m • Sizgacha kelish vaqti hisoblanmoqda`
-                : "Faqat marshrut chizig'iga 300 m yaqin masofada yoqiladi"}
+                ? `Marshrutgacha: ${userDistanceToRoute >= 1000 ? (userDistanceToRoute / 1000).toFixed(1) + ' km' : (userDistanceToRoute || 0) + ' m'} • Sizgacha kelish vaqti hisoblanmoqda`
+                : "Faqat marshrut chizig'iga 2 km yaqin masofada yoqiladi"}
             </div>
           </div>
         </div>
