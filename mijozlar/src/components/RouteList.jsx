@@ -169,6 +169,15 @@ function getRouteProgress(pLat, pLng, polyPoints) {
   return cumDistances[bestSegmentIndex] + bestT * segLength;
 }
 
+function getRouteTotalDistance(points) {
+  if (!points || points.length < 2) return 0;
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    total += getDistanceMeters(points[i][0], points[i][1], points[i + 1][0], points[i + 1][1]);
+  }
+  return total;
+}
+
 export default function RouteList({ 
   onSelectRoute,
   selectedRouteId: propRouteId,
@@ -230,9 +239,28 @@ export default function RouteList({
   useEffect(() => {
     fetchRoutes();
     fetchLiveDrivers();
-    const interval = setInterval(fetchLiveDrivers, 2000);
+    const interval = setInterval(fetchLiveDrivers, 1500);
     return () => clearInterval(interval);
   }, []);
+
+  // Continuous real-time location watch when location is active
+  useEffect(() => {
+    if (!isUserLocationActive || !navigator.geolocation) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const uLat = pos.coords.latitude;
+        const uLng = pos.coords.longitude;
+        if (setUserLocation) setUserLocation({ lat: uLat, lng: uLng });
+      },
+      (err) => console.warn("User watch error:", err),
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [isUserLocationActive]);
 
   const activeRoute = (selectedRouteId && routes.find(r => r.id === selectedRouteId)) || routes[0];
 
@@ -337,7 +365,7 @@ export default function RouteList({
   const forwardDirTitle = `${startStopName} - ${endStopName}`;
   const backwardDirTitle = `${endStopName} - ${startStopName}`;
 
-  // Process vehicles: Calculate stops and ETA (User ETA vs Next Stop ETA)
+  // Process vehicles: Calculate stops, dynamic route progress and real-time live ETA
   const processedVehicles = (liveDrivers || []).map(driver => {
     let currentStopName = "1-bekat (Bosh bekat)";
     let nextStopName = "";
@@ -345,19 +373,28 @@ export default function RouteList({
     let etaSubtitle = "keyingi bekatga";
     let userDistMeters = null;
     let userDistanceText = null;
+    let arrivalStatus = 'approaching'; // 'approaching' | 'arrived' | 'passed'
+    let hasPassedUser = false;
 
     if (!driver || !driver.route_id) return null;
     const driverRoute = routes.find(r => String(r.id) === String(driver.route_id));
     if (!driverRoute) return null;
     const stops = driverRoute && Array.isArray(driverRoute.stops) ? driverRoute.stops : [];
+    const polyPoints = extractRoutePoints(driverRoute);
+    const totalRouteDist = polyPoints.length >= 2 ? getRouteTotalDistance(polyPoints) : 0;
 
-    if (stops.length > 0 && driver.latitude && driver.longitude) {
+    const dLat = Number(driver.latitude);
+    const dLng = Number(driver.longitude);
+    if (!dLat || !dLng || isNaN(dLat) || isNaN(dLng)) return null;
+
+    // 1. Closest Stop determination
+    if (stops.length > 0) {
       let minDist = Infinity;
       let closestIdx = 0;
 
       stops.forEach((s, idx) => {
         if (s && s.lat && s.lng) {
-          const d = getDistanceMeters(Number(driver.latitude), Number(driver.longitude), Number(s.lat), Number(s.lng));
+          const d = getDistanceMeters(dLat, dLng, Number(s.lat), Number(s.lng));
           if (d < minDist) {
             minDist = d;
             closestIdx = idx;
@@ -367,36 +404,13 @@ export default function RouteList({
 
       const closestStop = stops[closestIdx];
       const sName = typeof closestStop === 'object' ? closestStop.name : String(closestStop);
-      
-      if (minDist < 120) {
-        currentStopName = `${sName} bekatida`;
-      } else {
-        currentStopName = `${sName} yaqinida`;
-      }
-
-      // Next stop
-      if (closestIdx < stops.length - 1) {
-        const nStop = stops[closestIdx + 1];
-        nextStopName = typeof nStop === 'object' ? nStop.name : String(nStop);
-        const distToNext = getDistanceMeters(Number(driver.latitude), Number(driver.longitude), Number(nStop.lat), Number(nStop.lng));
-        // Default ETA when user location is OFF: time to next stop (~400 m/min)
-        etaMinutes = Math.max(1, Math.round(distToNext / 400));
-        etaSubtitle = "keyingi bekatga";
-      } else {
-        nextStopName = "Oxirgi bekat";
-        etaMinutes = 1;
-        etaSubtitle = "keyingi bekatga";
-      }
+      currentStopName = minDist < 120 ? `${sName} bekatida` : `${sName} yaqinida`;
     }
 
-    // Direction calculation: Based on terminals and route progress (never mobile phone heading)
+    // 2. Real-time Direction calculation: Based on terminals, GPS heading and route progress
     const driverId = String(driver.driver_id || driver.id);
     let direction = 'ketmoqda';
-    const polyPoints = extractRoutePoints(driverRoute);
-    if (polyPoints.length >= 2 && driver.latitude && driver.longitude) {
-      const dLat = Number(driver.latitude);
-      const dLng = Number(driver.longitude);
-
+    if (polyPoints.length >= 2) {
       if (driver.last_terminal === 'start') {
         direction = 'ketmoqda';
       } else if (driver.last_terminal === 'end') {
@@ -407,9 +421,9 @@ export default function RouteList({
         const distToStart = getDistanceMeters(dLat, dLng, startPt[0], startPt[1]);
         const distToEnd = getDistanceMeters(dLat, dLng, endPt[0], endPt[1]);
 
-        if (distToStart <= 350) {
+        if (distToStart <= 400) {
           direction = 'ketmoqda';
-        } else if (distToEnd <= 350) {
+        } else if (distToEnd <= 400) {
           direction = 'kelmoqda';
         } else if (prevDirectionsRef.current[driverId]) {
           direction = prevDirectionsRef.current[driverId];
@@ -420,60 +434,78 @@ export default function RouteList({
       prevDirectionsRef.current[driverId] = direction;
     }
 
-    // WHEN USER LOCATION IS ON: Calculate ETA and check if vehicle has already passed the user
-    let hasPassedUser = false;
-    if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng && driver.latitude && driver.longitude && polyPoints.length >= 2) {
+    const vehProgress = polyPoints.length >= 2 ? getRouteProgress(dLat, dLng, polyPoints) : 0;
+
+    // 3. CASE A: WHEN PASSENGER LOCATION IS OFF
+    // Calculate live distance and ETA to the trip destination along route polyline
+    if (!isUserLocationActive) {
+      if (direction === 'ketmoqda') {
+        nextStopName = endStopName;
+        const remainingDist = Math.max(0, totalRouteDist - vehProgress);
+        etaMinutes = Math.max(1, Math.round(remainingDist / 420));
+        const distKm = (remainingDist / 1000).toFixed(1);
+        etaSubtitle = `${endStopName}ga (~${distKm} km)`;
+        userDistanceText = `${distKm} km`;
+      } else {
+        nextStopName = startStopName;
+        const remainingDist = Math.max(0, vehProgress);
+        etaMinutes = Math.max(1, Math.round(remainingDist / 420));
+        const distKm = (remainingDist / 1000).toFixed(1);
+        etaSubtitle = `${startStopName}ga (~${distKm} km)`;
+        userDistanceText = `${distKm} km`;
+      }
+    }
+
+    // 4. CASE B: WHEN PASSENGER LOCATION IS ON
+    // Calculate live ETA and distance from moving vehicle directly to user
+    if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng) {
       const uLat = Number(userLocation.lat);
       const uLng = Number(userLocation.lng);
-      const dLat = Number(driver.latitude);
-      const dLng = Number(driver.longitude);
 
-      const userProgress = getRouteProgress(uLat, uLng, polyPoints);
-      const vehProgress = getRouteProgress(dLat, dLng, polyPoints);
-
-      if (direction === 'ketmoqda') {
-        // Vehicle traveling from Start to End (increasing progress)
-        // If vehicle has passed user by more than 50 meters, it has already passed
-        if (vehProgress > (userProgress + 50)) {
-          hasPassedUser = true;
+      let distMeters = 0;
+      if (polyPoints.length >= 2) {
+        const userProgress = getRouteProgress(uLat, uLng, polyPoints);
+        if (direction === 'ketmoqda') {
+          if (vehProgress > userProgress + 60) {
+            hasPassedUser = true;
+            distMeters = vehProgress - userProgress;
+          } else {
+            hasPassedUser = false;
+            distMeters = Math.max(0, userProgress - vehProgress);
+          }
         } else {
-          userDistMeters = Math.max(0, userProgress - vehProgress);
+          if (vehProgress < userProgress - 60) {
+            hasPassedUser = true;
+            distMeters = userProgress - vehProgress;
+          } else {
+            hasPassedUser = false;
+            distMeters = Math.max(0, vehProgress - userProgress);
+          }
         }
       } else {
-        // Vehicle traveling from End to Start (decreasing progress)
-        // If vehicle has passed user towards start by more than 50 meters, it has already passed
-        if (vehProgress < (userProgress - 50)) {
-          hasPassedUser = true;
-        } else {
-          userDistMeters = Math.max(0, vehProgress - userProgress);
-        }
+        distMeters = getDistanceMeters(dLat, dLng, uLat, uLng);
       }
 
-      if (!hasPassedUser && userDistMeters !== null) {
-        // City travel time at ~380m/min
-        etaMinutes = Math.max(1, Math.round(userDistMeters / 380));
+      userDistMeters = Math.round(distMeters);
+      userDistanceText = distMeters >= 1000 ? `${(distMeters / 1000).toFixed(1)} km` : `${Math.round(distMeters)} m`;
+
+      if (distMeters <= 70) {
+        arrivalStatus = 'arrived';
+        etaMinutes = 0;
+        etaSubtitle = "Yoningizda (Yetib keldi)";
+      } else if (hasPassedUser) {
+        arrivalStatus = 'passed';
+        etaMinutes = Math.max(1, Math.round(distMeters / 400));
+        etaSubtitle = "O'tib ketdi";
+      } else {
+        arrivalStatus = 'approaching';
+        etaMinutes = Math.max(1, Math.round(distMeters / 400));
         etaSubtitle = "sizgacha yetib keladi";
-        userDistanceText = userDistMeters >= 1000
-          ? `${(userDistMeters / 1000).toFixed(1)} km`
-          : `${Math.round(userDistMeters)} m`;
       }
-    } else if (isUserLocationActive && userLocation && driver.latitude && driver.longitude) {
-      // Fallback if polyPoints < 2
-      userDistMeters = getDistanceMeters(
-        Number(driver.latitude),
-        Number(driver.longitude),
-        userLocation.lat,
-        userLocation.lng
-      );
-      etaMinutes = Math.max(1, Math.round((userDistMeters * 1.25) / 380));
-      etaSubtitle = "sizgacha yetib keladi";
-      userDistanceText = userDistMeters >= 1000
-        ? `${(userDistMeters / 1000).toFixed(1)} km`
-        : `${Math.round(userDistMeters)} m`;
     }
 
     return {
-      driverId: driver.driver_id,
+      driverId: driver.driver_id || driver.id,
       driverName: `${driver.name} ${driver.car_number ? `(${driver.car_number})` : (driver.surname || '')}`,
       carNumber: driver.car_number || driver.surname || "",
       phone: driver.phone,
@@ -481,8 +513,8 @@ export default function RouteList({
       routeNumber: driver.route_number || driverRoute?.number || "1",
       routeName: driver.route_name || driverRoute?.name || "Marshrut",
       routeColor: driver.route_color || driverRoute?.color || "#0066FF",
-      latitude: driver.latitude,
-      longitude: driver.longitude,
+      latitude: dLat,
+      longitude: dLng,
       speed: driver.speed || 0,
       currentStopName,
       nextStopName,
@@ -492,6 +524,7 @@ export default function RouteList({
       userDistanceText,
       isUserLocationActive,
       hasPassedUser,
+      arrivalStatus,
       direction,
       directionText: direction === 'ketmoqda' ? 'Ketmoqda' : 'Kelmoqda',
       directionColor: direction === 'ketmoqda' ? (driverRoute?.arrow_color_forward || '#0066FF') : (driverRoute?.arrow_color_backward || '#10B981')
@@ -503,32 +536,29 @@ export default function RouteList({
     ? processedVehicles.filter(v => v && v.routeId && String(v.routeId) === String(activeRoute.id))
     : [];
 
-  // When user location is active: ONLY show vehicles that have NOT passed the user yet!
-  const forwardVehicles = routeVehicles
-    .filter(v => v.direction === 'ketmoqda')
-    .filter(v => !isUserLocationActive || !v.hasPassedUser);
+  const forwardVehicles = routeVehicles.filter(v => v.direction === 'ketmoqda');
+  const backwardVehicles = routeVehicles.filter(v => v.direction === 'kelmoqda');
 
-  const backwardVehicles = routeVehicles
-    .filter(v => v.direction === 'kelmoqda')
-    .filter(v => !isUserLocationActive || !v.hasPassedUser);
+  // Sort vehicles: Approaching and Arrived come first by distance, Passed vehicles placed at the end
+  const sortVehicles = (list) => {
+    return [...list].sort((a, b) => {
+      // 1. If location is active: approaching/arrived vehicles prioritized over passed
+      if (isUserLocationActive) {
+        if (a.hasPassedUser !== b.hasPassedUser) {
+          return a.hasPassedUser ? 1 : -1;
+        }
+        if (a.userDistMeters != null && b.userDistMeters != null) {
+          return a.userDistMeters - b.userDistMeters;
+        }
+      }
+      return a.etaMinutes - b.etaMinutes;
+    });
+  };
 
-  // Sort: When user location is active, sort by distance to user so the closest car arrives first (#1)
-  // When location is off, sort by time to next stop
-  forwardVehicles.sort((a, b) => {
-    if (isUserLocationActive && a.userDistMeters != null && b.userDistMeters != null) {
-      return a.userDistMeters - b.userDistMeters;
-    }
-    return a.etaMinutes - b.etaMinutes;
-  });
+  const sortedForwardVehicles = sortVehicles(forwardVehicles);
+  const sortedBackwardVehicles = sortVehicles(backwardVehicles);
 
-  backwardVehicles.sort((a, b) => {
-    if (isUserLocationActive && a.userDistMeters != null && b.userDistMeters != null) {
-      return a.userDistMeters - b.userDistMeters;
-    }
-    return a.etaMinutes - b.etaMinutes;
-  });
-
-  const displayedVehicles = selectedDirection === 'ketmoqda' ? forwardVehicles : backwardVehicles;
+  const displayedVehicles = selectedDirection === 'ketmoqda' ? sortedForwardVehicles : sortedBackwardVehicles;
   const currentDirTitle = selectedDirection === 'ketmoqda' ? forwardDirTitle : backwardDirTitle;
   const otherVehiclesCount = selectedDirection === 'ketmoqda' ? backwardVehicles.length : forwardVehicles.length;
   const otherDirTitle = selectedDirection === 'ketmoqda' ? backwardDirTitle : forwardDirTitle;

@@ -379,7 +379,7 @@ export default function MapComponent({
   useEffect(() => {
     hasAutoZoomedToNearest.current = false;
     userHasMovedMap.current = false;
-  }, [selectedRoute?.id, currentDirection]);
+  }, [selectedRoute?.id, currentDirection, isUserLocationActive]);
 
   // Ultra-fast real-time live drivers fetcher (no caching)
   const fetchLiveDrivers = async () => {
@@ -397,8 +397,8 @@ export default function MapComponent({
   useEffect(() => {
     fetchRoutes();
     fetchLiveDrivers();
-    // Real-time polling every 2 seconds without freezing
-    const interval = setInterval(fetchLiveDrivers, 2000);
+    // Real-time polling every 1.5 seconds without freezing
+    const interval = setInterval(fetchLiveDrivers, 1500);
     return () => clearInterval(interval);
   }, []);
 
@@ -767,20 +767,19 @@ export default function MapComponent({
       };
     }).filter(Boolean);
 
-    // Filter visible drivers: When user location is active, ONLY show vehicles in the selected direction that haven't passed the user
-    let visibleDrivers = processedRouteDrivers;
-    if (isUserLocationActive) {
-      visibleDrivers = processedRouteDrivers.filter(
-        d => d.direction === currentDirection && !d.hasPassedUser
-      );
-    }
+    // All active drivers on this route are visible on the map (both Ketmoqda and Kelmoqda)
+    // Never hide returning cars from the map so user can see full real-time movement
+    const visibleDrivers = processedRouteDrivers;
 
     setVisibleDriversCount(visibleDrivers.length);
 
-    // Find nearest vehicle to user among visible drivers
+    // Find nearest vehicle to user (prioritizing approaching vehicles in current direction)
     let nearest = null;
     let minD = Infinity;
-    visibleDrivers.forEach(d => {
+    const approachingVehicles = visibleDrivers.filter(d => !d.hasPassedUser && d.direction === currentDirection);
+    const candidateList = approachingVehicles.length > 0 ? approachingVehicles : visibleDrivers;
+
+    candidateList.forEach(d => {
       const dist = d.userDistMeters !== null && d.userDistMeters !== undefined
         ? d.userDistMeters
         : getDistanceMeters(Number(userLocation?.lat || 0), Number(userLocation?.lng || 0), Number(d.latitude), Number(d.longitude));
@@ -820,7 +819,7 @@ export default function MapComponent({
 
     const visibleIds = new Set(visibleDrivers.map(d => String(d.driver_id || d.id)));
 
-    // A. Remove markers for drivers who went offline, left this route, or don't match active direction
+    // A. Remove markers for drivers who went offline or left this route
     Object.keys(busMarkersRef.current).forEach(id => {
       if (!visibleIds.has(id)) {
         if (busMarkersRef.current[id]?.marker) {
@@ -846,18 +845,21 @@ export default function MapComponent({
       const dirText = isKetmoqda ? 'Ketmoqda' : 'Kelmoqda';
 
       // Determine rotation angle for the arrow:
-      // Strictly follows the road path in the direction of the route (Start -> End or End -> Start)
+      // Prefer real-time movement GPS heading, fallback to route segment bearing
       const routeBearing = getRouteSegmentBearing(lat, lng, routePolyPoints);
       let rotationAngle = 0;
-      if (routeBearing !== null) {
+      if (driver.heading && Number(driver.heading) > 0) {
+        rotationAngle = Math.round(Number(driver.heading));
+      } else if (routeBearing !== null) {
         rotationAngle = isKetmoqda ? Math.round(routeBearing) : Math.round((routeBearing + 180) % 360);
       } else {
         rotationAngle = isKetmoqda ? 0 : 180;
       }
       const carNum = driver.car_number || driver.surname || '';
+      const isNearest = nearest && String(nearest.driver_id || nearest.id) === id && isUserLocationActive;
       const popupHtml = `
         <div style="font-family: sans-serif; font-size: 13px; padding: 6px;">
-          <div style="font-weight: 700; color: #0f172a;">${driver.name}</div>
+          <div style="font-weight: 700; color: #0f172a;">${driver.name} ${isNearest ? '<span style="background: #2563eb; color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 6px; margin-left: 4px;">Eng yaqin</span>' : ''}</div>
           ${carNum ? `<div style="display: inline-block; font-family: monospace; font-weight: 800; font-size: 12px; background: #f8fafc; border: 1.5px solid #0f172a; padding: 1px 6px; border-radius: 4px; margin-top: 3px; color: #0f172a;">${carNum}</div>` : ''}
           <div style="color: #64748b; font-size: 12px; margin-top: 3px;">
             ${driver.route_number || selectedRoute.number}-marshrut • <strong style="color: ${busColor};">${dirText}</strong>
@@ -867,7 +869,8 @@ export default function MapComponent({
       `;
 
       const markerHtml = `
-        <div class="driver-arrow-container">
+        <div class="driver-arrow-container ${isNearest ? 'nearest-car-pulse' : ''}">
+          ${isNearest ? '<div class="nearest-car-badge">Eng yaqin</div>' : ''}
           <div class="driver-arrow-wrap" style="transform: rotate(${rotationAngle}deg);">
             <svg width="34" height="34" viewBox="0 0 32 32">
               <path d="M16 2 L28 27 L16 21 L4 27 Z" fill="${busColor}" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>

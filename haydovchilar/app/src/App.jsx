@@ -336,6 +336,8 @@ function App() {
 
   const isOnlineRef = useRef(safeGetStorage('yolovchi_location_enabled') === 'true');
   const watchIdRef = useRef(null);
+  const prevCoordsRef = useRef(null);
+  const lastHeadingRef = useRef(0.0);
 
   // Helper to get reliable driver identity from URL params or localStorage
   const getDriverIdentity = () => {
@@ -486,22 +488,43 @@ function App() {
   useEffect(() => {
     if (!locationEnabled && subTab !== 'xarita' && !navToStartActive) return;
 
+    const calculateMovementBearing = (lat1, lon1, lat2, lon2) => {
+      const toRad = Math.PI / 180;
+      const toDeg = 180 / Math.PI;
+      const dLon = (lon2 - lon1) * toRad;
+      const y = Math.sin(dLon) * Math.cos(lat2 * toRad);
+      const x = Math.cos(lat1 * toRad) * Math.sin(lat2 * toRad) -
+                Math.sin(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.cos(dLon);
+      let brng = Math.atan2(y, x) * toDeg;
+      return (brng + 360) % 360;
+    };
+
     const sendPosition = (position) => {
-      // If driver is not online and not viewing map, ignore
       if (!isOnlineRef.current && subTab !== 'xarita' && !navToStartActive) return;
 
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
-      const heading = position.coords.heading || 0.0;
+      const rawHeading = position.coords.heading;
       const speed = position.coords.speed ? Math.round(position.coords.speed * 3.6) : 0.0;
 
-      // Update local state for driver map (only if actually moved to prevent render loop)
-      setDriverLocation(prev => {
-        if (prev && Math.abs(prev.latitude - lat) < 0.00001 && Math.abs(prev.longitude - lng) < 0.00001 && prev.heading === heading) {
-          return prev;
+      // Dynamic movement-based heading calculation
+      let effectiveHeading = lastHeadingRef.current || 0.0;
+      if (rawHeading !== null && rawHeading !== undefined && !isNaN(rawHeading) && rawHeading > 0) {
+        effectiveHeading = Math.round(Number(rawHeading));
+        lastHeadingRef.current = effectiveHeading;
+      } else if (prevCoordsRef.current) {
+        const d = getStopDistanceMeters(prevCoordsRef.current.lat, prevCoordsRef.current.lng, lat, lng);
+        if (d >= 2) {
+          effectiveHeading = Math.round(calculateMovementBearing(prevCoordsRef.current.lat, prevCoordsRef.current.lng, lat, lng));
+          lastHeadingRef.current = effectiveHeading;
+          prevCoordsRef.current = { lat, lng };
         }
-        return { latitude: lat, longitude: lng, heading, speed };
-      });
+      } else {
+        prevCoordsRef.current = { lat, lng };
+      }
+
+      // Update local state for driver map (always fresh, zero lag)
+      setDriverLocation({ latitude: lat, longitude: lng, heading: effectiveHeading, speed });
 
       // Transmit to backend API ONLY when driver is strictly online
       if (isOnlineRef.current) {
@@ -540,7 +563,7 @@ function App() {
               route_id: assignedRoute?.id || null,
               latitude: lat,
               longitude: lng,
-              heading: heading,
+              heading: effectiveHeading,
               speed: speed,
               capacity: capacity
             })
@@ -549,7 +572,7 @@ function App() {
           .then(data => {
             if (data && data.deviated) {
               handleLocationToggle(false);
-              setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan 1 km dan ortiq uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
+              setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan 2 km dan ortiq uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
               setUnreadCount(prev => prev + 1);
             } else if (data && data.out_of_route) {
               handleLocationToggle(false);
@@ -587,18 +610,19 @@ function App() {
       navigator.geolocation.getCurrentPosition(
         sendPosition,
         () => {
-          navigator.geolocation.getCurrentPosition(sendPosition, () => {}, { enableHighAccuracy: false, timeout: 8000 });
+          navigator.geolocation.getCurrentPosition(sendPosition, () => {}, { enableHighAccuracy: false, timeout: 6000, maximumAge: 0 });
         },
-        { enableHighAccuracy: true, timeout: 6000 }
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
       );
 
       watchIdRef.current = navigator.geolocation.watchPosition(
         sendPosition,
         (err) => console.warn("Watch position error:", err),
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 2000 }
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
       );
     }
 
+    // Fallback polling interval every 1500ms with maximumAge: 0 (forces fresh hardware GPS)
     const interval = setInterval(() => {
       if (isOnlineRef.current) {
         if (lm && lm.isLocationAvailable && typeof lm.getLocation === 'function') {
@@ -607,10 +631,10 @@ function App() {
           } catch (e) {}
         }
         if ("geolocation" in navigator) {
-          navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true });
+          navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true, timeout: 4000, maximumAge: 0 });
         }
       }
-    }, 2000);
+    }, 1500);
 
     return () => {
       if (watchIdRef.current !== null && "geolocation" in navigator) {

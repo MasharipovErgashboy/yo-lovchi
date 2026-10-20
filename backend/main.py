@@ -654,15 +654,15 @@ async def update_location(payload: DriverLocationUpdate):
     current_loc = get_driver_location(driver_id)
     was_active_on_work = bool(current_loc and current_loc.get("is_online") and current_loc.get("active_on_route"))
 
-    # Check 1 km distance deviation from assigned route
+    # Check 2 km distance deviation from assigned route
     if target_route_id and payload.latitude and payload.longitude:
         dist_meters = calculate_distance_to_route_polyline(payload.latitude, payload.longitude, target_route_id)
-        if dist_meters is not None and dist_meters > 1000.0:
+        if dist_meters is not None and dist_meters > 2000.0:
             set_driver_offline(driver_id)
             if was_active_on_work:
                 warning_title = "Marshrutdan chetlanish"
                 warning_msg = (
-                    "Siz belgilangan marshrut chizig'idan 1 km dan ortiq uzoqlashdingiz. "
+                    "Siz belgilangan marshrut chizig'idan 2 km dan ortiq uzoqlashdingiz. "
                     "Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing."
                 )
 
@@ -706,7 +706,7 @@ async def update_location(payload: DriverLocationUpdate):
                     "deviated": False,
                     "out_of_route": True,
                     "distance_meters": round(dist_meters, 1),
-                    "message": "Joylashuvni yoqish uchun avval marshrut chizig'iga 1 km yaqinlashing.",
+                    "message": "Joylashuvni yoqish uchun avval marshrut chizig'iga 2 km yaqinlashing.",
                     "driver_id": driver_id
                 }
 

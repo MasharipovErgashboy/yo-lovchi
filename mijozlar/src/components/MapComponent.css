@@ -575,3 +575,34 @@
   }
 }
 
+/* Nearest Car Highlight Badge & Pulse */
+.nearest-car-pulse {
+  position: relative;
+  filter: drop-shadow(0 0 10px rgba(37, 99, 235, 0.9));
+  animation: nearestCarGlow 1.8s infinite ease-in-out;
+}
+
+@keyframes nearestCarGlow {
+  0% { transform: scale(1); filter: drop-shadow(0 0 6px rgba(37, 99, 235, 0.7)); }
+  50% { transform: scale(1.08); filter: drop-shadow(0 0 14px rgba(37, 99, 235, 1)); }
+  100% { transform: scale(1); filter: drop-shadow(0 0 6px rgba(37, 99, 235, 0.7)); }
+}
+
+.nearest-car-badge {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1.5px solid #ffffff;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  z-index: 9999;
+}
+

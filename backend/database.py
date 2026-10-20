@@ -1241,7 +1241,7 @@ def check_and_record_trip(cursor, driver_id: int, route_id: Optional[int], lat: 
 
     dist_to_start = haversine_distance(lat, lng, start_pt[0], start_pt[1])
     dist_to_end = haversine_distance(lat, lng, end_pt[0], end_pt[1])
-    threshold = 500.0  # 500 meters terminal radius
+    threshold = 700.0  # 700 meters terminal radius
 
     cursor.execute("SELECT last_terminal, last_terminal_time FROM driver_locations WHERE driver_id = %s;", (driver_id,))
     loc_row = cursor.fetchone()
