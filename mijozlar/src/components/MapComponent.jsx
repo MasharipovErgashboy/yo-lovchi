@@ -854,27 +854,15 @@ export default function MapComponent({
       } else {
         rotationAngle = isKetmoqda ? 0 : 180;
       }
-
-      let capText = "Bo'sh joy ko'p";
-      let capColor = "#10B981";
-      if (driver.capacity === 'tola') {
-        capText = "To'la";
-        capColor = "#EF4444";
-      } else if (driver.capacity === 'ozroq') {
-        capText = "Ozroq joy bor";
-        capColor = "#F59E0B";
-      }
-
+      const carNum = driver.car_number || driver.surname || '';
       const popupHtml = `
         <div style="font-family: sans-serif; font-size: 13px; padding: 6px;">
-          <strong>${driver.name} ${driver.car_number ? `(${driver.car_number})` : (driver.surname || '')}</strong>
-          <div style="color: #64748b; font-size: 12px; margin-top: 2px;">
+          <div style="font-weight: 700; color: #0f172a;">${driver.name}</div>
+          ${carNum ? `<div style="display: inline-block; font-family: monospace; font-weight: 800; font-size: 12px; background: #f8fafc; border: 1.5px solid #0f172a; padding: 1px 6px; border-radius: 4px; margin-top: 3px; color: #0f172a;">${carNum}</div>` : ''}
+          <div style="color: #64748b; font-size: 12px; margin-top: 3px;">
             ${driver.route_number || selectedRoute.number}-marshrut • <strong style="color: ${busColor};">${dirText}</strong>
           </div>
-          ${driver.userDistanceText ? `<div style="color: #0066FF; font-weight: 600; font-size: 12px; margin-top: 2px;">Sizgacha: ${driver.userDistanceText} (~${driver.etaMinutes} daq)</div>` : ''}
-          <div style="color: ${capColor}; font-weight: 700; margin-top: 4px;">
-            ${capText}
-          </div>
+          ${driver.userDistanceText ? `<div style="color: #0066FF; font-weight: 600; font-size: 12px; margin-top: 3px;">Sizgacha: ${driver.userDistanceText} (~${driver.etaMinutes} daq)</div>` : ''}
         </div>
       `;
 

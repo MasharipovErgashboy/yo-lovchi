@@ -17,6 +17,7 @@ from database import (
     get_candidate_by_phone,
     save_candidate,
     update_candidate_status,
+    update_candidate_details,
     delete_candidate,
     save_message,
     get_admin_messages,
@@ -101,6 +102,11 @@ class CandidateResponse(BaseModel):
     pending_message_id: Optional[int] = None
     created_at: str
     updated_at: str
+
+class DriverUpdate(BaseModel):
+    name: Optional[str] = None
+    car_number: Optional[str] = None
+    phone: Optional[str] = None
 
 class MessageCreate(BaseModel):
     title: str
@@ -289,6 +295,16 @@ async def remove_driver(driver_id: int):
     success = delete_candidate(driver_id)
     logger.info(f"Driver {driver_id} ({candidate['name']} {candidate['surname']}) deleted from database.")
     return {"success": success, "deleted_id": driver_id}
+
+@app.patch("/api/drivers/{driver_id}")
+def update_driver_info(driver_id: int, payload: DriverUpdate):
+    """Update driver name, car_number, or phone from admin panel."""
+    candidate = get_candidate_by_id(driver_id)
+    if not candidate:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver not found")
+    updated = update_candidate_details(driver_id, payload.name, payload.car_number, payload.phone)
+    logger.info(f"Driver {driver_id} updated: {payload.dict(exclude_unset=True)}")
+    return {"success": True, "driver": updated}
 
 def resolve_driver(
     driver_id: Optional[int] = None,

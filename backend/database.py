@@ -483,6 +483,34 @@ def update_candidate_status(candidate_id: int, status: str) -> Optional[Dict[str
     conn.close()
     return get_candidate_by_id(candidate_id)
 
+def update_candidate_details(candidate_id: int, name: Optional[str] = None, car_number: Optional[str] = None, phone: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    updates = []
+    params = []
+    if name is not None:
+        updates.append("name = %s")
+        params.append(name.strip())
+    if car_number is not None:
+        clean_num = car_number.strip().upper()
+        updates.append("car_number = %s")
+        params.append(clean_num)
+        updates.append("surname = %s")
+        params.append(clean_num)
+    if phone is not None:
+        updates.append("phone = %s")
+        params.append(phone.strip())
+    
+    if updates:
+        updates.append("updated_at = NOW()")
+        params.append(candidate_id)
+        sql = f"UPDATE candidates SET {', '.join(updates)} WHERE id = %s"
+        cursor.execute(sql, tuple(params))
+        conn.commit()
+    cursor.close()
+    conn.close()
+    return get_candidate_by_id(candidate_id)
+
 def delete_candidate(candidate_id: int) -> bool:
     """Delete candidate/driver completely from database."""
     conn = get_connection()

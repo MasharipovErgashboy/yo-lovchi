@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, Users, Clock, Navigation, ChevronRight, Bus } from 'lucide-react';
+import { MapPin, Clock, Navigation, ChevronRight, Bus } from 'lucide-react';
 
 function formatStopWithGa(stopName) {
   if (!stopName) return "Bekatga";
@@ -21,37 +21,10 @@ export default function VehicleCard({
     currentStopName = "Bekatda",
     nextStopName = "",
     etaMinutes = 3,
-    capacity = "bosh",
     speed = 0,
-    isUserLocationActive = false
+    isUserLocationActive = false,
+    carNumber = ""
   } = vehicle;
-
-  // Capacity styling
-  let capBadge = {
-    text: "Bo'sh joy ko'p",
-    sub: "60–70%",
-    bg: "#ecfdf5",
-    color: "#059669",
-    border: "#a7f3d0"
-  };
-
-  if (capacity === 'tola') {
-    capBadge = {
-      text: "To'la",
-      sub: "90–100%",
-      bg: "#fef2f2",
-      color: "#dc2626",
-      border: "#fecaca"
-    };
-  } else if (capacity === 'ozroq') {
-    capBadge = {
-      text: "Ozroq joy bor",
-      sub: "30–40%",
-      bg: "#fffbeb",
-      color: "#d97706",
-      border: "#fde68a"
-    };
-  }
 
   const stopWithGa = formatStopWithGa(nextStopName || currentStopName || "Bekat");
 
@@ -120,19 +93,11 @@ export default function VehicleCard({
         </div>
       )}
 
-      {/* Card Footer: Capacity & Action */}
+      {/* Card Footer: Car Plate & Action */}
       <div className="vehicle-card-footer">
-        <div 
-          className="vehicle-capacity-pill"
-          style={{ 
-            backgroundColor: capBadge.bg, 
-            color: capBadge.color,
-            borderColor: capBadge.border
-          }}
-        >
-          <Users size={14} />
-          <span>{capBadge.text}</span>
-          <span className="cap-percent">({capBadge.sub})</span>
+        <div className="vehicle-plate-pill" title="Avtomobil davlat raqami">
+          <span className="plate-flag">UZ</span>
+          <span className="plate-number">{carNumber || "Avtoraqam"}</span>
         </div>
 
         <button className="vehicle-view-btn">

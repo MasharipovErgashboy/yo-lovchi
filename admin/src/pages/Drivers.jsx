@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { User, Activity, MapPin, X, Route, Clock, Car, Loader2, Trash2, AlertTriangle, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
+import { User, Activity, MapPin, X, Route, Clock, Car, Loader2, Trash2, AlertTriangle, MessageSquare, Send, CheckCircle2, Pencil } from 'lucide-react';
 import './PagesCommon.css';
 
 const BACKEND_URL = "";
@@ -11,6 +11,14 @@ export default function Drivers() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Tahrirlash holati
+  const [driverToEdit, setDriverToEdit] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editCarNumber, setEditCarNumber] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editSuccess, setEditSuccess] = useState(false);
 
   // Xabar yuborish modali holati
   const [driverToMessage, setDriverToMessage] = useState(null);
@@ -213,6 +221,38 @@ export default function Drivers() {
     }
   };
 
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!driverToEdit || isSavingEdit) return;
+    setIsSavingEdit(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/drivers/${driverToEdit.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editName.trim(),
+          car_number: editCarNumber.trim().toUpperCase(),
+          phone: editPhone.trim()
+        })
+      });
+      if (res.ok) {
+        setEditSuccess(true);
+        await fetchApproved();
+        setTimeout(() => {
+          setDriverToEdit(null);
+          setEditSuccess(false);
+        }, 800);
+      } else {
+        alert("Saqlashda xatolik yuz berdi!");
+      }
+    } catch (err) {
+      console.error("Edit driver error:", err);
+      alert("Aloqa xatosi yuz berdi!");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
   useEffect(() => {
     fetchApproved();
     fetchRoutes();
@@ -337,6 +377,20 @@ export default function Drivers() {
                           title="Haydovchiga xabar yuborish"
                         >
                           <MessageSquare size={16} /> Xabar
+                        </button>
+                        <button 
+                          className="action-btn"
+                          style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)' }}
+                          onClick={() => {
+                            setDriverToEdit(driver);
+                            setEditName(driver.name || '');
+                            setEditCarNumber(driver.car_number || '');
+                            setEditPhone(driver.phone || '');
+                            setEditSuccess(false);
+                          }}
+                          title="Avtomobil raqami va ma'lumotlarni tahrirlash"
+                        >
+                          <Pencil size={16} /> Tahrirlash
                         </button>
                         <button 
                           className="action-btn danger-btn"
@@ -702,6 +756,100 @@ export default function Drivers() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Tahrirlash Modali */}
+      {driverToEdit && typeof document !== 'undefined' && createPortal(
+        <div className="modal-overlay" onClick={() => !isSavingEdit && setDriverToEdit(null)}>
+          <div className="modal-content glass-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981' }}>
+                <Pencil size={20} /> Haydovchini tahrirlash
+              </h3>
+              <button className="close-btn" onClick={() => !isSavingEdit && setDriverToEdit(null)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {editSuccess ? (
+              <div style={{ padding: '36px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <CheckCircle2 size={28} />
+                </div>
+                <h4 style={{ margin: 0, fontSize: '16px', color: '#10b981' }}>O'zgarishlar saqlandi!</h4>
+              </div>
+            ) : (
+              <form onSubmit={handleSaveEdit}>
+                <div className="modal-body" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: '500' }}>
+                      Haydovchi ismi
+                    </label>
+                    <input
+                      type="text"
+                      className="custom-input"
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      required
+                      placeholder="Masalan: Ali"
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: '500' }}>
+                      Avtomobil raqami (Davlat raqami)
+                    </label>
+                    <input
+                      type="text"
+                      className="custom-input"
+                      value={editCarNumber}
+                      onChange={e => setEditCarNumber(e.target.value)}
+                      required
+                      placeholder="Masalan: 60 A 123 AA"
+                      style={{ textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: '700' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: '500' }}>
+                      Telefon raqami
+                    </label>
+                    <input
+                      type="text"
+                      className="custom-input"
+                      value={editPhone}
+                      onChange={e => setEditPhone(e.target.value)}
+                      required
+                      placeholder="+998 90 123 45 67"
+                    />
+                  </div>
+                </div>
+
+                <div className="modal-footer" style={{ padding: '16px 24px' }}>
+                  <button 
+                    type="button" 
+                    className="action-btn"
+                    style={{ flex: 1, justifyContent: 'center' }}
+                    onClick={() => setDriverToEdit(null)}
+                    disabled={isSavingEdit}
+                  >
+                    Bekor qilish
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="action-btn"
+                    style={{ flex: 1, justifyContent: 'center', background: '#10b981', color: '#ffffff', borderColor: '#10b981' }}
+                    disabled={isSavingEdit}
+                  >
+                    {isSavingEdit ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                    {isSavingEdit ? "Saqlanmoqda..." : "Saqlash"}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>,
         document.body

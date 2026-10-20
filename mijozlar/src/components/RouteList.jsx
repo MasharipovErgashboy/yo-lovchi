@@ -475,6 +475,7 @@ export default function RouteList({
     return {
       driverId: driver.driver_id,
       driverName: `${driver.name} ${driver.car_number ? `(${driver.car_number})` : (driver.surname || '')}`,
+      carNumber: driver.car_number || driver.surname || "",
       phone: driver.phone,
       routeId: driver.route_id || driverRoute?.id,
       routeNumber: driver.route_number || driverRoute?.number || "1",
@@ -483,7 +484,6 @@ export default function RouteList({
       latitude: driver.latitude,
       longitude: driver.longitude,
       speed: driver.speed || 0,
-      capacity: driver.capacity || "bosh",
       currentStopName,
       nextStopName,
       etaMinutes,

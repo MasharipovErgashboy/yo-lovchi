@@ -3,7 +3,6 @@ import { AlertTriangle, Navigation, MapPin, X, Volume2 } from 'lucide-react'
 import './App.css'
 import Header from './components/Header'
 import LocationToggle from './components/LocationToggle'
-import CapacitySelector from './components/CapacitySelector'
 import BottomNav from './components/BottomNav'
 import Messages from './components/Messages'
 import Profile from './components/Profile'
@@ -729,9 +728,6 @@ function App() {
                   });
                 }}
               />
-
-              {/* Instant Capacity Selector */}
-              <CapacitySelector selected={capacity} onSelect={handleCapacityChange} />
             </>
           ) : (
             /* Full Real Leaflet Map showing assigned route and ONLY the driver's own vehicle */
