@@ -338,6 +338,12 @@ function App() {
   const watchIdRef = useRef(null);
   const prevCoordsRef = useRef(null);
   const lastHeadingRef = useRef(0.0);
+  const capacityRef = useRef(capacity);
+  capacityRef.current = capacity;
+  const wakeLockRef = useRef(null);
+  const isGpsBusyRef = useRef(false);
+  const isSendingRef = useRef(false);
+  const lastSentTimeRef = useRef(0);
 
   // Helper to get reliable driver identity from URL params or localStorage
   const getDriverIdentity = () => {
@@ -439,6 +445,11 @@ function App() {
         watchIdRef.current = null;
       }
 
+      if (wakeLockRef.current) {
+        try { wakeLockRef.current.release(); } catch (e) {}
+        wakeLockRef.current = null;
+      }
+
       fetch('/api/driver/offline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -451,10 +462,20 @@ function App() {
         silentAudio.play().catch(() => {});
       } catch (e) {}
 
+      // Keep screen ON while driver is actively working
+      if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').then(wl => {
+          wakeLockRef.current = wl;
+        }).catch(() => {});
+      }
+
       // Driver turned on location -> notify backend immediately with current GPS
       const lat = currentPos?.coords?.latitude || driverLocation?.latitude;
       const lng = currentPos?.coords?.longitude || driverLocation?.longitude;
       if (lat && lng && (identity.driver_id || identity.phone || identity.telegram_id)) {
+        isSendingRef.current = true;
+        lastSentTimeRef.current = Date.now();
+
         fetch('/api/driver/location', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -465,26 +486,29 @@ function App() {
             longitude: lng,
             heading: currentPos?.coords?.heading || driverLocation?.heading || 0.0,
             speed: currentPos?.coords?.speed ? Math.round(currentPos.coords.speed * 3.6) : (driverLocation?.speed || 0.0),
-            capacity: capacity
+            capacity: capacityRef.current || 'bosh'
           })
         })
         .then(res => res.json())
         .then(data => {
           if (data && data.deviated) {
             handleLocationToggle(false);
-            setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan 1 km dan ortiq uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
+            setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
             setUnreadCount(prev => prev + 1);
           } else if (data && data.out_of_route) {
             handleLocationToggle(false);
             setRouteWarning(data.message || "Joylashuvni yoqish uchun avval marshrut boshlanish nuqtasiga yoki marshrut chizig'iga yaqinlashing.");
           }
         })
-        .catch(err => console.error("Immediate GPS send error:", err));
+        .catch(err => console.error("Immediate GPS send error:", err))
+        .finally(() => {
+          isSendingRef.current = false;
+        });
       }
     }
   };
 
-  // Real-time GPS location transmitter
+  // Real-time continuous GPS location transmitter
   useEffect(() => {
     if (!locationEnabled && subTab !== 'xarita' && !navToStartActive) return;
 
@@ -501,6 +525,7 @@ function App() {
 
     const sendPosition = (position) => {
       if (!isOnlineRef.current && subTab !== 'xarita' && !navToStartActive) return;
+      if (!position || !position.coords) return;
 
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
@@ -509,7 +534,7 @@ function App() {
 
       // Dynamic movement-based heading calculation
       let effectiveHeading = lastHeadingRef.current || 0.0;
-      if (rawHeading !== null && rawHeading !== undefined && !isNaN(rawHeading) && rawHeading > 0) {
+      if (rawHeading !== null && rawHeading !== undefined && !isNaN(rawHeading) && Number(rawHeading) > 0) {
         effectiveHeading = Math.round(Number(rawHeading));
         lastHeadingRef.current = effectiveHeading;
       } else if (prevCoordsRef.current) {
@@ -553,97 +578,128 @@ function App() {
           });
         }
 
+        const now = Date.now();
+        // Prevent overlapping HTTP POST requests
+        if (isSendingRef.current && (now - lastSentTimeRef.current) < 1000) {
+          return;
+        }
+
         const identity = getDriverIdentity();
         if (identity.driver_id || identity.phone || identity.telegram_id) {
+          isSendingRef.current = true;
+          lastSentTimeRef.current = now;
+
           fetch('/api/driver/location', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               ...identity,
-              route_id: assignedRoute?.id || null,
+              route_id: assignedRouteRef.current?.id || assignedRoute?.id || null,
               latitude: lat,
               longitude: lng,
               heading: effectiveHeading,
               speed: speed,
-              capacity: capacity
+              capacity: capacityRef.current || 'bosh'
             })
           })
           .then(res => res.json())
           .then(data => {
             if (data && data.deviated) {
               handleLocationToggle(false);
-              setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan 2 km dan ortiq uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
+              setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
               setUnreadCount(prev => prev + 1);
             } else if (data && data.out_of_route) {
               handleLocationToggle(false);
               setRouteWarning(data.message || "Joylashuvni yoqish uchun avval marshrut boshlanish nuqtasiga yoki marshrut chizig'iga yaqinlashing.");
             }
           })
-          .catch(err => console.error("GPS send error:", err));
+          .catch(err => console.error("GPS send error:", err))
+          .finally(() => {
+            isSendingRef.current = false;
+          });
         }
       }
     };
 
-    const sendPositionFromLm = (loc) => {
-      if (!loc || typeof loc.latitude !== 'number' || typeof loc.longitude !== 'number') return;
-      sendPosition({
-        coords: {
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          heading: loc.course || 0.0,
-          speed: loc.speed || 0.0,
-          accuracy: loc.accuracy || 10
-        }
-      });
-    };
-
-    const tg = window.Telegram?.WebApp;
-    const lm = tg?.LocationManager;
-
-    if (lm && lm.isLocationAvailable && typeof lm.getLocation === 'function') {
-      try {
-        lm.getLocation(sendPositionFromLm);
-      } catch (e) {}
-    }
-
+    // 1. Initial Position check
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         sendPosition,
-        () => {
-          navigator.geolocation.getCurrentPosition(sendPosition, () => {}, { enableHighAccuracy: false, timeout: 6000, maximumAge: 0 });
-        },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        () => {},
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 3000 }
       );
 
+      // 2. High-Accuracy Continuous Watcher
       watchIdRef.current = navigator.geolocation.watchPosition(
         sendPosition,
-        (err) => console.warn("Watch position error:", err),
-        { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
+        (err) => console.warn("Watch position notice:", err),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 2000 }
       );
     }
 
-    // Fallback polling interval every 1500ms with maximumAge: 0 (forces fresh hardware GPS)
-    const interval = setInterval(() => {
+    // 3. Watchdog Polling Interval (Non-overlapping: only fires if watchPosition has been silent for > 3.5s)
+    const watchdogInterval = setInterval(() => {
       if (isOnlineRef.current) {
-        if (lm && lm.isLocationAvailable && typeof lm.getLocation === 'function') {
-          try {
-            lm.getLocation(sendPositionFromLm);
-          } catch (e) {}
-        }
-        if ("geolocation" in navigator) {
-          navigator.geolocation.getCurrentPosition(sendPosition, (err) => console.warn(err), { enableHighAccuracy: true, timeout: 4000, maximumAge: 0 });
+        const elapsed = Date.now() - lastSentTimeRef.current;
+        if (elapsed > 3500 && !isGpsBusyRef.current && "geolocation" in navigator) {
+          isGpsBusyRef.current = true;
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              isGpsBusyRef.current = false;
+              sendPosition(pos);
+            },
+            () => {
+              isGpsBusyRef.current = false;
+            },
+            { enableHighAccuracy: true, timeout: 7000, maximumAge: 3000 }
+          );
         }
       }
-    }, 1500);
+    }, 2500);
+
+    // 4. Screen Wake Lock Management
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator && !wakeLockRef.current && isOnlineRef.current) {
+          wakeLockRef.current = await navigator.wakeLock.request('screen');
+          wakeLockRef.current.addEventListener('release', () => {
+            wakeLockRef.current = null;
+          });
+        }
+      } catch (e) {}
+    };
+    if (isOnlineRef.current) {
+      requestWakeLock();
+    }
+
+    // 5. Visibility Change (Phone unlocked or browser returned to foreground)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && isOnlineRef.current) {
+        requestWakeLock();
+        if ("geolocation" in navigator) {
+          navigator.geolocation.getCurrentPosition(
+            sendPosition,
+            () => {},
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 2000 }
+          );
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       if (watchIdRef.current !== null && "geolocation" in navigator) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
-      clearInterval(interval);
+      clearInterval(watchdogInterval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (wakeLockRef.current) {
+        try { wakeLockRef.current.release(); } catch (e) {}
+        wakeLockRef.current = null;
+      }
     };
-  }, [locationEnabled, capacity, assignedRoute, subTab, navToStartActive]);
+  }, [locationEnabled, subTab, navToStartActive]);
 
   if (isKickedOut) {
     return (

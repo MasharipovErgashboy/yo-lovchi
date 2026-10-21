@@ -162,8 +162,12 @@ function getRouteProgress(pLat, pLng, polyPoints) {
   return cumDistances[bestSegmentIndex] + bestT * segLength;
 }
 
+function angleDelta(a, b) {
+  let diff = (a - b + 180) % 360 - 180;
+  return Math.abs(diff < -180 ? diff + 360 : diff);
+}
+
 // Determines whether driver is "ketmoqda" (from start point to end) or "kelmoqda" (from end to start)
-// Based strictly on terminals and progress along route (never mobile compass heading)
 function determineDriverDirection(driver, prevDriverState, polyPoints, fallbackIndex = 0) {
   const lat = Number(driver.latitude);
   const lng = Number(driver.longitude);
@@ -185,20 +189,35 @@ function determineDriverDirection(driver, prevDriverState, polyPoints, fallbackI
   const distToStart = getDistanceMeters(lat, lng, startPt[0], startPt[1]);
   const distToEnd = getDistanceMeters(lat, lng, endPt[0], endPt[1]);
 
-  // 2. Terminal arrival checks (within 350 meters of terminals)
-  if (distToStart <= 350) {
+  // 2. Terminal arrival checks (within 650 meters of terminals)
+  if (distToStart <= 650) {
     return 'ketmoqda'; // at start terminal -> heading to end
   }
-  if (distToEnd <= 350) {
+  if (distToEnd <= 650) {
     return 'kelmoqda'; // at end terminal -> heading back to start
   }
 
-  // 3. Keep previous direction while mid-route so direction doesn't wiggle or jump
+  // 3. Movement-based heading check against route road bearing
+  if (driver.heading && Number(driver.heading) > 0) {
+    const routeBearing = getRouteSegmentBearing(lat, lng, polyPoints);
+    if (routeBearing !== null) {
+      const diffForward = angleDelta(Number(driver.heading), routeBearing);
+      const diffBackward = angleDelta(Number(driver.heading), (routeBearing + 180) % 360);
+      if (diffForward < 60 && diffForward < diffBackward) {
+        return 'ketmoqda';
+      }
+      if (diffBackward < 60 && diffBackward < diffForward) {
+        return 'kelmoqda';
+      }
+    }
+  }
+
+  // 4. Keep previous direction while mid-route
   if (prevDriverState && prevDriverState.direction) {
     return prevDriverState.direction;
   }
 
-  // 4. Fallback based on closest terminal
+  // 5. Fallback based on closest terminal
   return distToStart <= distToEnd ? 'ketmoqda' : 'kelmoqda';
 }
 

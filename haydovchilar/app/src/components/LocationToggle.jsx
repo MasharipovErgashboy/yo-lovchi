@@ -106,10 +106,10 @@ export default function LocationToggle({
       const driverLat = position.coords.latitude;
       const driverLng = position.coords.longitude;
 
-      // If assigned route exists, verify 1 km distance rule
+      // If assigned route exists, verify 2 km (2000 meter) distance rule
       if (assignedRoute) {
         const minDist = calculateMinDistanceToRoute(driverLat, driverLng, assignedRoute);
-        if (minDist > 1000) {
+        if (minDist > 2000) {
           setDistanceError({
             distanceKm: (minDist / 1000).toFixed(1),
             routeName: assignedRoute.name || `${assignedRoute.number}-marshrut`,
@@ -119,7 +119,7 @@ export default function LocationToggle({
         }
       }
 
-      // Within 1 km or verified: activate location!
+      // Within 2 km or verified: activate location!
       setDistanceError(null);
       if (onLocationUpdate) {
         onLocationUpdate(position);
@@ -127,18 +127,58 @@ export default function LocationToggle({
       setEnabled(true, position);
     };
 
-    // 1. If Telegram LocationManager is available
-    if (lm && typeof lm.getLocation === 'function') {
-      // If we already know device GPS switch is OFF in Android
-      if (lm.isInited && !lm.isLocationAvailable) {
-        setChecking(false);
-        if (typeof lm.openSettings === 'function') {
-          try { lm.openSettings(); } catch (e) {}
-        }
-        setGpsPromptModal('turn_on');
-        return;
-      }
+    // Primary: Standard HTML5 Geolocation (prompts webview directly on user tap)
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        onPosSuccess,
+        (error) => {
+          // If HTML5 fails, attempt Telegram native LocationManager fallback
+          if (lm && typeof lm.getLocation === 'function') {
+            lm.getLocation((pos) => {
+              if (pos && typeof pos.latitude === 'number' && typeof pos.longitude === 'number') {
+                onPosSuccess({
+                  coords: {
+                    latitude: pos.latitude,
+                    longitude: pos.longitude,
+                    heading: pos.course || 0,
+                    speed: pos.speed || 0,
+                    accuracy: pos.accuracy || 10
+                  }
+                });
+              } else {
+                setChecking(false);
+                if (typeof lm.openSettings === 'function') {
+                  try { lm.openSettings(); } catch (e) {}
+                  setGpsPromptModal('turn_on');
+                } else {
+                  alert("Joylashuvni aniqlashda xatolik: iltimos, qurilma GPS sozlamalarini yoqing.");
+                }
+              }
+            });
+          } else {
+            // Retry with low accuracy
+            navigator.geolocation.getCurrentPosition(
+              onPosSuccess,
+              (err2) => {
+                setChecking(false);
+                if (lm && typeof lm.openSettings === 'function') {
+                  try { lm.openSettings(); } catch (e) {}
+                  setGpsPromptModal('turn_on');
+                } else {
+                  alert("Joylashuvni aniqlashda xatolik yuz berdi. Iltimos telefoningiz sozlamalarida GPS ni yoqing: " + (err2.message || error.message));
+                }
+              },
+              { enableHighAccuracy: false, timeout: 8000, maximumAge: 5000 }
+            );
+          }
+        },
+        { enableHighAccuracy: true, timeout: 7000, maximumAge: 3000 }
+      );
+      return;
+    }
 
+    // Telegram LocationManager fallback if navigator.geolocation not in window
+    if (lm && typeof lm.getLocation === 'function') {
       lm.getLocation((pos) => {
         if (pos && typeof pos.latitude === 'number' && typeof pos.longitude === 'number') {
           onPosSuccess({
@@ -151,53 +191,15 @@ export default function LocationToggle({
             }
           });
         } else {
-          // If Telegram LocationManager didn't return coordinates (e.g. GPS off)
           setChecking(false);
-          if (lm && !lm.isLocationAvailable && typeof lm.openSettings === 'function') {
-            try { lm.openSettings(); } catch (e) {}
-            setGpsPromptModal('turn_on');
-          } else {
-            fallbackHtml5(onPosSuccess);
-          }
+          alert("Joylashuvni aniqlashda xatolik yuz berdi.");
         }
       });
       return;
     }
 
-    // 2. Standard HTML5 Geolocation fallback
-    fallbackHtml5(onPosSuccess);
-  };
-
-  const fallbackHtml5 = (onPosSuccess) => {
-    if (!("geolocation" in navigator)) {
-      setChecking(false);
-      alert("Qurilmangizda GPS joylashuvni aniqlash mavjud emas.");
-      return;
-    }
-
-    const onPosError = (error) => {
-      navigator.geolocation.getCurrentPosition(
-        onPosSuccess,
-        (err2) => {
-          setChecking(false);
-          const tg = window.Telegram?.WebApp;
-          const lm = tg?.LocationManager;
-          if (lm && typeof lm.openSettings === 'function') {
-            try { lm.openSettings(); } catch (e) {}
-            setGpsPromptModal('turn_on');
-          } else {
-            alert("Joylashuvni aniqlashda xatolik yuz berdi. Iltimos telefoningiz sozlamalarida GPS ni yoqing: " + (err2.message || error.message));
-          }
-        },
-        { enableHighAccuracy: false, timeout: 8000, maximumAge: 5000 }
-      );
-    };
-
-    navigator.geolocation.getCurrentPosition(
-      onPosSuccess,
-      onPosError,
-      { enableHighAccuracy: true, timeout: 6000, maximumAge: 3000 }
-    );
+    setChecking(false);
+    alert("Qurilmangizda GPS joylashuvni aniqlash mavjud emas.");
   };
 
   // Auto-detect when driver switches back from Android Settings

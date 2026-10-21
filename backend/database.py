@@ -1443,6 +1443,7 @@ def get_live_drivers_for_route(route_id: int) -> List[Dict[str, Any]]:
           AND c.status = 'approved'
           AND c.assigned_route_id = %s
           AND r.is_active = true
+          AND dl.updated_at >= CURRENT_TIMESTAMP - INTERVAL '20 minutes'
         ORDER BY dl.updated_at DESC;
     """, (route_id, route_id))
     rows = cursor.fetchall()
@@ -1465,6 +1466,7 @@ def get_all_live_drivers() -> List[Dict[str, Any]]:
           AND c.assigned_route_id IS NOT NULL
           AND dl.route_id IS NOT NULL
           AND r.is_active = true
+          AND dl.updated_at >= CURRENT_TIMESTAMP - INTERVAL '20 minutes'
         ORDER BY dl.updated_at DESC;
     """)
     rows = cursor.fetchall()
