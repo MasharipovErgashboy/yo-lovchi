@@ -32,6 +32,9 @@ function getStopDistanceMeters(lat1, lon1, lat2, lon2) {
 }
 
 const isInsideDriverTelegram = () => {
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return true;
+  }
   const hash = window.location.hash || '';
   const search = window.location.search || '';
   if (

@@ -1,13 +1,13 @@
 const { Telegraf, Scenes, session, Markup } = require('telegraf');
 
-const BOT_TOKEN = '8611884504:AAE6Aca8wJPRiyJK1Pf-soWNf8Ry2fnAxNI';
+const BOT_TOKEN = process.env.BOT_TOKEN || '8611884504:AAE6Aca8wJPRiyJK1Pf-soWNf8Ry2fnAxNI';
 const bot = new Telegraf(BOT_TOKEN);
 
 // In-memory mock database for drivers
 const driversDb = new Map(); // userId -> { name, surname, phone, status, pendingMessageId }
 
 const WEB_APP_URL = process.env.WEB_APP_URL || "https://driver.yolovchiapp.uz";
-const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8008";
+const BACKEND_URL = process.env.BACKEND_URL || (process.env.NODE_ENV === 'production' ? "http://127.0.0.1:8008" : "http://localhost:8000");
 
 // Helper to safely delete messages
 async function safeDelete(ctx, messageId) {

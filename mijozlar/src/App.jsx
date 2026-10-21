@@ -38,6 +38,9 @@ class ErrorBoundary extends React.Component {
 }
 
 const isInsideTelegram = () => {
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return true;
+  }
   const hash = window.location.hash || '';
   const search = window.location.search || '';
   if (
