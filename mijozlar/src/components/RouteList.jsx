@@ -492,7 +492,7 @@ export default function RouteList({
       if (distMeters <= 70) {
         arrivalStatus = 'arrived';
         etaMinutes = 0;
-        etaSubtitle = "Yoningizda (Yetib keldi)";
+        etaSubtitle = "Yoningizda (Sizni kutyapti)";
       } else if (hasPassedUser) {
         arrivalStatus = 'passed';
         etaMinutes = Math.max(1, Math.round(distMeters / 400));
@@ -588,9 +588,6 @@ export default function RouteList({
           type="button"
           className={`direction-tab-btn ${selectedDirection === 'ketmoqda' ? 'active' : ''}`}
           onClick={() => setSelectedDirection('ketmoqda')}
-          style={{
-            '--dir-color': activeRoute?.arrow_color_forward || '#0066FF'
-          }}
         >
           <span className="direction-tab-title">
             {forwardDirTitle}
@@ -604,9 +601,6 @@ export default function RouteList({
           type="button"
           className={`direction-tab-btn ${selectedDirection === 'kelmoqda' ? 'active' : ''}`}
           onClick={() => setSelectedDirection('kelmoqda')}
-          style={{
-            '--dir-color': activeRoute?.arrow_color_backward || '#10B981'
-          }}
         >
           <span className="direction-tab-title">
             {backwardDirTitle}

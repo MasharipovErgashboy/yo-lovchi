@@ -64,7 +64,7 @@ export default function VehicleCard({
         <div className="vehicle-eta-block">
           <div className="vehicle-eta-val" style={{ color: arrivalStatus === 'arrived' ? '#10B981' : routeColor }}>
             <Clock size={16} style={{ display: 'inline', marginRight: '4px', verticalAlign: '-2px' }} />
-            {arrivalStatus === 'arrived' ? 'Keldi' : `${etaMinutes} daq`}
+            {arrivalStatus === 'arrived' ? 'Sizni Kutyapti' : `${etaMinutes} daq`}
           </div>
         </div>
       </div>

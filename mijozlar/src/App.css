@@ -429,14 +429,14 @@
   width: 100%;
 }
 
-.direction-tab-btn:hover {
+.direction-tab-btn:hover:not(.active) {
   background: rgba(255, 255, 255, 0.6);
 }
 
 .direction-tab-btn.active {
-  background: #ffffff;
-  border-color: var(--dir-color, #0066FF);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  background-color: var(--blue-primary) !important;
+  border-color: var(--blue-primary) !important;
+  box-shadow: 0 4px 14px rgba(0, 102, 255, 0.3) !important;
 }
 
 .direction-tab-title {
@@ -451,7 +451,7 @@
 }
 
 .direction-tab-btn.active .direction-tab-title {
-  color: var(--dir-color, #0066FF);
+  color: #ffffff !important;
 }
 
 .direction-tab-badge {
@@ -466,8 +466,8 @@
 }
 
 .direction-tab-btn.active .direction-tab-badge {
-  background: var(--dir-color, #0066FF);
-  color: #ffffff;
+  background: #ffffff !important;
+  color: var(--blue-primary) !important;
 }
 
 /* User Location Widget (below direction tabs) */
@@ -911,11 +911,12 @@
 }
 
 .vehicle-eta-val {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  white-space: nowrap;
 }
 
 .vehicle-eta-sub {
