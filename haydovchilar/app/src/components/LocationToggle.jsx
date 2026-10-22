@@ -77,8 +77,10 @@ export default function LocationToggle({
   const [distanceError, setDistanceError] = useState(null);
   const [gpsPromptModal, setGpsPromptModal] = useState(null); // 'turn_on' | 'turn_off' | null
   const [noRouteModal, setNoRouteModal] = useState(false);
+  const [inactiveRouteModal, setInactiveRouteModal] = useState(false);
 
   const hasRoute = Boolean(assignedRoute && assignedRoute.id);
+  const isRouteInactive = Boolean(assignedRoute && assignedRoute.is_active === false);
 
   const openDeviceSettings = () => {
     const tg = window.Telegram?.WebApp;
@@ -245,6 +247,18 @@ export default function LocationToggle({
       return;
     }
 
+    if (isRouteInactive) {
+      setInactiveRouteModal(true);
+      if (window.Telegram?.WebApp?.showAlert) {
+        try {
+          window.Telegram.WebApp.showAlert("Sizning marshrutingiz active emas");
+        } catch (e) {}
+      } else {
+        alert("Sizning marshrutingiz active emas");
+      }
+      return;
+    }
+
     const tg = window.Telegram?.WebApp;
     const lm = tg?.LocationManager;
 
@@ -278,12 +292,12 @@ export default function LocationToggle({
 
   return (
     <>
-      <div className={`location-card ${enabled ? 'is-active' : ''} ${!hasRoute ? 'is-unassigned' : ''}`}>
+      <div className={`location-card ${enabled ? 'is-active' : ''} ${!hasRoute || isRouteInactive ? 'is-unassigned' : ''}`}>
         <div className="location-content">
           <div 
             className="pulse-icon-container"
             style={{
-              background: !hasRoute 
+              background: (!hasRoute || isRouteInactive) 
                 ? 'rgba(156, 163, 175, 0.12)' 
                 : (enabled ? 'rgba(0, 102, 255, 0.08)' : 'rgba(0, 102, 255, 0.05)')
             }}
@@ -291,7 +305,7 @@ export default function LocationToggle({
             <div 
               className="pulse-circle-2"
               style={{
-                background: !hasRoute 
+                background: (!hasRoute || isRouteInactive) 
                   ? 'rgba(156, 163, 175, 0.18)' 
                   : (enabled ? 'rgba(0, 102, 255, 0.15)' : 'rgba(0, 102, 255, 0.1)')
               }}
@@ -299,7 +313,7 @@ export default function LocationToggle({
               <div 
                 className="pulse-circle-3"
                 style={{
-                  background: !hasRoute 
+                  background: (!hasRoute || isRouteInactive) 
                     ? 'rgba(156, 163, 175, 0.25)' 
                     : (enabled ? 'rgba(0, 102, 255, 0.25)' : 'rgba(0, 102, 255, 0.2)')
                 }}
@@ -307,7 +321,7 @@ export default function LocationToggle({
                 <div 
                   className="pulse-icon-inner" 
                   style={{ 
-                    backgroundColor: !hasRoute 
+                    backgroundColor: (!hasRoute || isRouteInactive) 
                       ? '#9ca3af' 
                       : (enabled ? 'var(--blue-primary)' : 'var(--text-secondary)') 
                   }}
@@ -325,14 +339,18 @@ export default function LocationToggle({
           <h2 className="location-title">
             {!hasRoute 
               ? "Marshrut biriktirilmagan" 
-              : (enabled ? "Joylashuv faol" : "Joylashuv o'chirilgan")}
+              : isRouteInactive
+                ? "Marshrut faol emas"
+                : (enabled ? "Joylashuv faol" : "Joylashuv o'chirilgan")}
           </h2>
           <p className="location-desc">
             {!hasRoute 
               ? "Administrator sizga marshrut biriktirgach, joylashuvni yoqishingiz mumkin" 
-              : (enabled 
-                  ? "Sizning joylashuvingiz yo'lovchilarga real vaqtda ko'rinmoqda" 
-                  : "Sizning joylashuvingiz yo'lovchilarga ko'rinmaydi")}
+              : isRouteInactive
+                ? "Sizning marshrutingiz active emas. Joylashuvni yoqish uchun marshrut faollashtirilishi kerak"
+                : (enabled 
+                    ? "Sizning joylashuvingiz yo'lovchilarga real vaqtda ko'rinmoqda" 
+                    : "Sizning joylashuvingiz yo'lovchilarga ko'rinmaydi")}
           </p>
 
 
@@ -342,9 +360,9 @@ export default function LocationToggle({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              background: 'rgba(0, 102, 255, 0.08)',
-              color: 'var(--blue-primary)',
-              border: '1px solid rgba(0, 102, 255, 0.2)',
+              background: isRouteInactive ? 'rgba(239, 68, 68, 0.08)' : 'rgba(0, 102, 255, 0.08)',
+              color: isRouteInactive ? '#ef4444' : 'var(--blue-primary)',
+              border: `1px solid ${isRouteInactive ? 'rgba(239, 68, 68, 0.25)' : 'rgba(0, 102, 255, 0.2)'}`,
               padding: '5px 14px',
               borderRadius: '20px',
               fontSize: '12px',
@@ -352,8 +370,8 @@ export default function LocationToggle({
               marginTop: '4px',
               marginBottom: '10px'
             }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--blue-primary)' }}></span>
-              <span>{assignedRoute.number}-marshrut • {assignedRoute.name || "Faol"}</span>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: isRouteInactive ? '#ef4444' : 'var(--blue-primary)' }}></span>
+              <span>{assignedRoute.number}-marshrut • {isRouteInactive ? "Qulfda (Noaktiv)" : (assignedRoute.name || "Faol")}</span>
             </div>
           )}
           
@@ -364,10 +382,12 @@ export default function LocationToggle({
             style={{ 
               backgroundColor: !hasRoute 
                 ? '#94a3b8' 
-                : (enabled ? 'var(--red)' : 'var(--blue-primary)'),
-              opacity: checking ? 0.7 : (!hasRoute ? 0.85 : 1),
+                : isRouteInactive
+                  ? '#64748b'
+                  : (enabled ? 'var(--red)' : 'var(--blue-primary)'),
+              opacity: checking ? 0.7 : (!hasRoute || isRouteInactive ? 0.85 : 1),
               cursor: !hasRoute ? 'not-allowed' : 'pointer',
-              boxShadow: !hasRoute 
+              boxShadow: (!hasRoute || isRouteInactive)
                 ? 'none' 
                 : (enabled ? '0 4px 14px rgba(239, 68, 68, 0.35)' : '0 4px 14px rgba(0, 102, 255, 0.35)'),
               marginTop: '8px',
@@ -378,7 +398,9 @@ export default function LocationToggle({
             <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />
             {checking 
               ? "Tekshirilmoqda..." 
-              : (enabled ? "Joylashuvni o'chirish" : "Joylashuvni yoqish")}
+              : isRouteInactive
+                ? "Marshrut active emas"
+                : (enabled ? "Joylashuvni o'chirish" : "Joylashuvni yoqish")}
           </button>
         </div>
       </div>
@@ -523,6 +545,40 @@ export default function LocationToggle({
                 fontSize: '16px',
                 fontWeight: '700',
                 backgroundColor: '#64748b'
+              }}
+            >
+              Tushunarli
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Inactive Route Guidance Modal */}
+      {inactiveRouteModal && (
+        <div className="driver-modal-overlay" onClick={() => setInactiveRouteModal(false)}>
+          <div className="driver-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="driver-modal-close" onClick={() => setInactiveRouteModal(false)}>
+              <X size={20} />
+            </button>
+            <div className="driver-modal-icon-wrap warning" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' }}>
+              <AlertTriangle size={36} color="#ef4444" />
+            </div>
+            <h3 className="driver-modal-title" style={{ color: '#ef4444' }}>Sizning marshrutingiz active emas</h3>
+            <p className="driver-modal-desc">
+              Hozirda <strong>{assignedRoute?.name || `${assignedRoute?.number}-marshrut`}</strong> administrator tomonidan faolsizlantirilgan (qulflangan). Administrator marshrutni faollashtirgandan so'ng joylashuvingizni yoqishingiz mumkin.
+            </p>
+            <button 
+              className="btn-primary" 
+              onClick={() => setInactiveRouteModal(false)}
+              style={{ 
+                marginTop: '16px', 
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '16px',
+                fontWeight: '700',
+                backgroundColor: '#ef4444'
               }}
             >
               Tushunarli

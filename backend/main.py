@@ -34,6 +34,7 @@ from database import (
     create_route,
     update_route,
     delete_route,
+    set_active_route,
     assign_driver_to_route,
     update_driver_location,
     set_driver_offline,
@@ -368,6 +369,11 @@ def check_driver_status(
     if candidate.get("assigned_route_id"):
         assigned_route = get_route_by_id(candidate["assigned_route_id"])
 
+    # If assigned route is inactive/locked, ensure driver is not considered online
+    if assigned_route and not assigned_route.get("is_active"):
+        candidate["is_online"] = False
+        candidate["dl_is_online"] = False
+
     return {
         "status": "approved",
         "driver": candidate,
@@ -560,12 +566,12 @@ def get_route(route_id: int):
 
 @app.post("/api/routes", status_code=status.HTTP_201_CREATED)
 def create_new_route(payload: RouteCreate):
-    """Admin creates a new route."""
+    """Admin creates a new route (maximum 2 routes allowed)."""
     existing_routes = get_routes()
-    if existing_routes and len(existing_routes) >= 1:
+    if existing_routes and len(existing_routes) >= 2:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tizimda faqat bitta marshrut yaratish mumkin!"
+            detail="Tizimda ko'pi bilan 2 ta marshrut yaratish mumkin!"
         )
     try:
         route = create_route(
@@ -584,6 +590,16 @@ def create_new_route(payload: RouteCreate):
     except Exception as e:
         logger.error(f"Error creating route: {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+@app.post("/api/routes/{route_id}/activate")
+def activate_single_route(route_id: int):
+    """Admin activates one route and locks/deactivates all others."""
+    route = get_route_by_id(route_id)
+    if not route:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
+    
+    updated = set_active_route(route_id)
+    return {"success": True, "route": updated}
 
 @app.put("/api/routes/{route_id}")
 def update_existing_route(route_id: int, payload: RouteUpdate):
@@ -648,6 +664,17 @@ async def update_location(payload: DriverLocationUpdate):
             "success": False,
             "no_route": True,
             "message": "Sizga hali marshrut biriktirilmagan. Iltimos, admin marshrut biriktirishini kuting."
+        }
+
+    # Check if assigned route is active (not locked by admin)
+    route_obj = get_route_by_id(target_route_id)
+    if not route_obj or not route_obj.get("is_active"):
+        set_driver_offline(driver_id)
+        return {
+            "success": False,
+            "inactive_route": True,
+            "message": "Sizning marshrutingiz active emas",
+            "driver_id": driver_id
         }
 
     # Check if driver was already actively working on the route

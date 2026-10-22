@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, Navigation, Music, Volume2 } from 'lucide-react';
+import { Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, Navigation, Music, Volume2, Lock, Unlock } from 'lucide-react';
 import './PagesCommon.css';
 import './Routes.css';
 
@@ -19,6 +19,7 @@ export default function RoutesPage() {
   const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [activatingId, setActivatingId] = useState(null);
   const [uploadingStopIdx, setUploadingStopIdx] = useState(null);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -55,8 +56,8 @@ export default function RoutesPage() {
   }, []);
 
   const openAddModal = () => {
-    if (routes.length >= 1) {
-      alert("Tizimda faqat bitta marshrut yaratish mumkin!");
+    if (routes.length >= 2) {
+      alert("Tizimda ko'pi bilan 2 ta marshrut yaratish mumkin!");
       return;
     }
     setEditingRouteId(null);
@@ -71,6 +72,34 @@ export default function RoutesPage() {
       { name: 'Oxirgi bekat', raw: '', audio_url: null, audio_name: '' }
     ]);
     setIsAddModalOpen(true);
+  };
+
+  const handleToggleRouteActive = async (route) => {
+    if (route.is_active) {
+      return;
+    }
+    
+    if (!window.confirm(`"${route.name}" marshrutini faollashtirmoqchimisiz? Boshqa barcha marshrutlar qulflanadi va ularning haydovchilari offline qilinadi.`)) {
+      return;
+    }
+
+    setActivatingId(route.id);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/routes/${route.id}/activate`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        await fetchRoutes();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert("Xatolik: " + (err.detail || "Marshrutni faollashtirishda xatolik yuz berdi"));
+      }
+    } catch (err) {
+      console.error("Activate route error:", err);
+      alert("Server bilan bog'lanishda xatolik yuz berdi!");
+    } finally {
+      setActivatingId(null);
+    }
   };
 
   const openEditModal = (route) => {
@@ -194,7 +223,7 @@ export default function RoutesPage() {
           audio_url: s.audio_url || null,
           audio_name: s.audio_name || ''
         })),
-        is_active: true
+        is_active: editingRouteId ? (routes.find(r => r.id === editingRouteId)?.is_active ?? true) : true
       };
 
       const url = editingRouteId ? `${BACKEND_URL}/api/routes/${editingRouteId}` : `${BACKEND_URL}/api/routes`;
@@ -229,9 +258,9 @@ export default function RoutesPage() {
         <h2 style={{ fontSize: '24px', fontWeight: 600 }}>Barcha Marshrutlar</h2>
         <button 
           className="btn-primary" 
-          onClick={routes.length >= 1 ? undefined : openAddModal}
-          disabled={routes.length >= 1}
-          style={routes.length >= 1 ? {
+          onClick={routes.length >= 2 ? undefined : openAddModal}
+          disabled={routes.length >= 2}
+          style={routes.length >= 2 ? {
             background: '#475569',
             borderColor: '#334155',
             color: '#94a3b8',
@@ -239,7 +268,7 @@ export default function RoutesPage() {
             opacity: 0.65,
             boxShadow: 'none'
           } : {}}
-          title={routes.length >= 1 ? "Faqat 1 ta marshrut yaratish mumkin" : "Yangi marshrut qo'shish"}
+          title={routes.length >= 2 ? "Ko'pi bilan 2 ta marshrut yaratish mumkin" : "Yangi marshrut qo'shish"}
         >
           <Plus size={20} /> Yangi marshrut qo'shish
         </button>
@@ -269,7 +298,28 @@ export default function RoutesPage() {
                     {route.number}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>{route.name}</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>{route.name}</h3>
+                      {route.is_active ? (
+                        <span style={{ 
+                          display: 'inline-flex', alignItems: 'center', gap: '4px', 
+                          background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', 
+                          border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 8px', 
+                          borderRadius: '12px', fontSize: '11px', fontWeight: 600 
+                        }}>
+                          <Unlock size={12} /> Faol (Ochiq)
+                        </span>
+                      ) : (
+                        <span style={{ 
+                          display: 'inline-flex', alignItems: 'center', gap: '4px', 
+                          background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', 
+                          border: '1px solid rgba(239, 68, 68, 0.3)', padding: '2px 8px', 
+                          borderRadius: '12px', fontSize: '11px', fontWeight: 600 
+                        }}>
+                          <Lock size={12} /> Qulfda (Noaktiv)
+                        </span>
+                      )}
+                    </div>
                     {route.direction && (
                       <div style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {route.direction}
@@ -298,7 +348,53 @@ export default function RoutesPage() {
                       </span>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {!route.is_active ? (
+                      <button 
+                        type="button" 
+                        className="route-lock-btn locked"
+                        title="Marshrutni faollashtirish (Qulfdan chiqarish)"
+                        disabled={activatingId === route.id}
+                        onClick={() => handleToggleRouteActive(route)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: 'linear-gradient(135deg, #10b981, #059669)',
+                          color: '#ffffff',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: activatingId === route.id ? 'wait' : 'pointer',
+                          boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {activatingId === route.id ? <Loader2 size={14} className="animate-spin" /> : <Unlock size={14} />}
+                        <span>Qulfdan chiqarish</span>
+                      </button>
+                    ) : (
+                      <span 
+                        title="Ushbu marshrut hozirda faol ishlamoqda"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          color: '#10b981',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          padding: '4px 8px',
+                          background: 'rgba(16, 185, 129, 0.08)',
+                          borderRadius: '6px',
+                          border: '1px solid rgba(16, 185, 129, 0.2)'
+                        }}
+                      >
+                        <Check size={14} /> Faol
+                      </span>
+                    )}
+
                     <button 
                       className="icon-btn-small" 
                       title="Tahrirlash"

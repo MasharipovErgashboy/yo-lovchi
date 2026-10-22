@@ -213,8 +213,11 @@ export default function RouteList({
       if (routesRes.ok) {
         const routesData = await routesRes.json();
         setRoutes(routesData || []);
-        if (routesData.length > 0 && !selectedRouteId) {
-          setSelectedRouteId(routesData[0].id);
+        if (routesData.length > 0) {
+          const activeR = routesData.find(r => r.is_active) || routesData[0];
+          if (!selectedRouteId || !routesData.some(r => r.id === selectedRouteId && r.is_active)) {
+            setSelectedRouteId(activeR.id);
+          }
         }
       }
     } catch (e) {
@@ -262,7 +265,7 @@ export default function RouteList({
     };
   }, [isUserLocationActive]);
 
-  const activeRoute = (selectedRouteId && routes.find(r => r.id === selectedRouteId)) || routes[0];
+  const activeRoute = (selectedRouteId && routes.find(r => r.id === selectedRouteId && r.is_active)) || routes.find(r => r.is_active) || routes[0];
 
   // Location Toggle handler with 2 km (2000 meter) route proximity requirement
   const handleToggleLocation = () => {
@@ -565,10 +568,10 @@ export default function RouteList({
 
   return (
     <div className="vehicles-page-container">
-      {/* Route Switcher if multiple routes exist */}
-      {routes.length > 1 && (
+      {/* Route Switcher if multiple active routes exist */}
+      {routes.filter(r => r.is_active).length > 1 && (
         <div className="route-switcher-bar">
-          {routes.map(r => (
+          {routes.filter(r => r.is_active).map(r => (
             <button 
               key={r.id}
               type="button"

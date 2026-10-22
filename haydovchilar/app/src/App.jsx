@@ -257,14 +257,23 @@ function App() {
           if (hasAssignedRoute) {
             setAssignedRoute(prev => {
               if (!prev) return data.assigned_route;
-              if (prev.id !== data.assigned_route.id || prev.updated_at !== data.assigned_route.updated_at) {
+              if (
+                prev.id !== data.assigned_route.id ||
+                prev.updated_at !== data.assigned_route.updated_at ||
+                prev.is_active !== data.assigned_route.is_active
+              ) {
                 return data.assigned_route;
               }
               return prev;
             });
 
-            // Sync online state with database (only valid if assigned route exists)
-            if (data.driver && data.driver.is_online) {
+            // If assigned route is inactive/locked, driver must be offline
+            if (data.assigned_route && data.assigned_route.is_active === false) {
+              setLocationEnabled(false);
+              isOnlineRef.current = false;
+              safeSetStorage('yolovchi_location_enabled', 'false');
+            } else if (data.driver && data.driver.is_online) {
+              // Sync online state with database (only valid if assigned route exists and is active)
               setLocationEnabled(true);
               isOnlineRef.current = true;
               safeSetStorage('yolovchi_location_enabled', 'true');
@@ -423,10 +432,17 @@ function App() {
 
   // Location Toggle Handler (with immediate online/offline GPS signal)
   const handleLocationToggle = (newEnabled, currentPos = null) => {
-    if (newEnabled && !assignedRoute) {
+    if (newEnabled && (!assignedRoute || assignedRoute.is_active === false)) {
       isOnlineRef.current = false;
       setLocationEnabled(false);
       safeSetStorage('yolovchi_location_enabled', 'false');
+      if (assignedRoute && assignedRoute.is_active === false) {
+        if (window.Telegram?.WebApp?.showAlert) {
+          window.Telegram.WebApp.showAlert("Sizning marshrutingiz active emas");
+        } else {
+          alert("Sizning marshrutingiz active emas");
+        }
+      }
       return;
     }
 
@@ -509,7 +525,14 @@ function App() {
         .then(res => res.json())
         .then(data => {
           clearTimeout(timeoutId);
-          if (data && data.deviated) {
+          if (data && data.inactive_route) {
+            handleLocationToggle(false);
+            if (window.Telegram?.WebApp?.showAlert) {
+              window.Telegram.WebApp.showAlert(data.message || "Sizning marshrutingiz active emas");
+            } else {
+              alert(data.message || "Sizning marshrutingiz active emas");
+            }
+          } else if (data && data.deviated) {
             handleLocationToggle(false);
             setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
             setUnreadCount(prev => prev + 1);
@@ -635,7 +658,14 @@ function App() {
           .then(res => res.json())
           .then(data => {
             clearTimeout(timeoutId);
-            if (data && data.deviated) {
+            if (data && data.inactive_route) {
+              handleLocationToggle(false);
+              if (window.Telegram?.WebApp?.showAlert) {
+                window.Telegram.WebApp.showAlert(data.message || "Sizning marshrutingiz active emas");
+              } else {
+                alert(data.message || "Sizning marshrutingiz active emas");
+              }
+            } else if (data && data.deviated) {
               handleLocationToggle(false);
               setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
               setUnreadCount(prev => prev + 1);

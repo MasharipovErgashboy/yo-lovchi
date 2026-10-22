@@ -371,10 +371,11 @@ export default function MapComponent({
         const routesData = await rRes.json();
         setRoutes(routesData || []);
         if (routesData && routesData.length > 0) {
+          const activeR = routesData.find(r => r.is_active) || routesData[0];
           const found = initialRouteId 
-            ? routesData.find(r => String(r.id) === String(initialRouteId)) 
-            : routesData[0];
-          setSelectedRoute(prev => prev || found || routesData[0]);
+            ? routesData.find(r => String(r.id) === String(initialRouteId) && r.is_active) 
+            : activeR;
+          setSelectedRoute(prev => (prev && prev.is_active ? prev : (found || activeR)));
         }
       }
     } catch (e) {
@@ -386,10 +387,17 @@ export default function MapComponent({
 
   // Sync selectedRoute if initialRouteId prop changes
   useEffect(() => {
-    if (initialRouteId && routes.length > 0) {
-      const found = routes.find(r => String(r.id) === String(initialRouteId));
-      if (found && (!selectedRoute || String(selectedRoute.id) !== String(found.id))) {
-        setSelectedRoute(found);
+    if (routes.length > 0) {
+      const activeR = routes.find(r => r.is_active) || routes[0];
+      if (initialRouteId) {
+        const found = routes.find(r => String(r.id) === String(initialRouteId) && r.is_active);
+        if (found && (!selectedRoute || String(selectedRoute.id) !== String(found.id))) {
+          setSelectedRoute(found);
+          return;
+        }
+      }
+      if (!selectedRoute || !selectedRoute.is_active) {
+        setSelectedRoute(activeR);
       }
     }
   }, [initialRouteId, routes]);

@@ -995,10 +995,50 @@ def create_route(
         str(arrow_color_backward or "#10B981")
     ))
     row = cursor.fetchone()
+    
+    # If newly created route is active, deactivate other routes to guarantee only 1 route is active
+    if bool(is_active) and row and "id" in row:
+        cursor.execute("UPDATE routes SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id != %s;", (row["id"],))
+        cursor.execute("""
+            UPDATE driver_locations
+            SET is_online = false, active_on_route = false, shift_ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE route_id != %s AND is_online = true;
+        """, (row["id"],))
+
     conn.commit()
     cursor.close()
     conn.close()
     return get_route_by_id(row["id"])
+
+def set_active_route(route_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Set route_id as the ONLY active route. All other routes are marked is_active = false.
+    Also mark drivers on the deactivated routes as offline.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # 1. Deactivate all other routes
+    cursor.execute("UPDATE routes SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id != %s;", (route_id,))
+    
+    # 2. Activate target route
+    cursor.execute("UPDATE routes SET is_active = true, updated_at = CURRENT_TIMESTAMP WHERE id = %s RETURNING id;", (route_id,))
+    row = cursor.fetchone()
+    
+    # 3. Disconnect drivers of inactive routes
+    cursor.execute("""
+        UPDATE driver_locations
+        SET is_online = false, active_on_route = false, shift_ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE route_id != %s AND is_online = true;
+    """, (route_id,))
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    if not row:
+        return None
+    return get_route_by_id(route_id)
 
 def update_route(
     route_id: int,
