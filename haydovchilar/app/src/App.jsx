@@ -347,6 +347,8 @@ function App() {
   const isGpsBusyRef = useRef(false);
   const isSendingRef = useRef(false);
   const lastSentTimeRef = useRef(0);
+  const lastGpsFixTimeRef = useRef(Date.now());
+  const silentLoopAudioRef = useRef(null);
 
   // Helper to get reliable driver identity from URL params or localStorage
   const getDriverIdentity = () => {
@@ -440,11 +442,14 @@ function App() {
         try { currentAudioRef.current.pause(); } catch (e) {}
         currentAudioRef.current = null;
       }
+      if (silentLoopAudioRef.current) {
+        try { silentLoopAudioRef.current.pause(); } catch (e) {}
+      }
       setPlayingStopAnnouncement(null);
       playedStopsRef.current.clear();
 
       if (watchIdRef.current !== null && "geolocation" in navigator) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+        try { navigator.geolocation.clearWatch(watchIdRef.current); } catch (e) {}
         watchIdRef.current = null;
       }
 
@@ -459,10 +464,14 @@ function App() {
         body: JSON.stringify(identity)
       }).catch(err => console.error("Offline error:", err));
     } else {
-      // Driver turned on location -> unlock audio context on user gesture
+      // Driver turned on location -> unlock audio context on user gesture & keep thread awake
       try {
-        const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
-        silentAudio.play().catch(() => {});
+        if (!silentLoopAudioRef.current) {
+          silentLoopAudioRef.current = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
+          silentLoopAudioRef.current.loop = true;
+          silentLoopAudioRef.current.volume = 0.01;
+        }
+        silentLoopAudioRef.current.play().catch(() => {});
       } catch (e) {}
 
       // Keep screen ON while driver is actively working
@@ -478,10 +487,15 @@ function App() {
       if (lat && lng && (identity.driver_id || identity.phone || identity.telegram_id)) {
         isSendingRef.current = true;
         lastSentTimeRef.current = Date.now();
+        lastGpsFixTimeRef.current = Date.now();
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
 
         fetch('/api/driver/location', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             ...identity,
             route_id: assignedRoute?.id || null,
@@ -494,6 +508,7 @@ function App() {
         })
         .then(res => res.json())
         .then(data => {
+          clearTimeout(timeoutId);
           if (data && data.deviated) {
             handleLocationToggle(false);
             setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
@@ -503,7 +518,10 @@ function App() {
             setRouteWarning(data.message || "Joylashuvni yoqish uchun avval marshrut boshlanish nuqtasiga yoki marshrut chizig'iga yaqinlashing.");
           }
         })
-        .catch(err => console.error("Immediate GPS send error:", err))
+        .catch(err => {
+          clearTimeout(timeoutId);
+          console.error("Immediate GPS send error:", err);
+        })
         .finally(() => {
           isSendingRef.current = false;
         });
@@ -532,8 +550,13 @@ function App() {
 
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
+      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+
+      lastGpsFixTimeRef.current = Date.now();
+
       const rawHeading = position.coords.heading;
-      const speed = position.coords.speed ? Math.round(position.coords.speed * 3.6) : 0.0;
+      const rawSpeed = position.coords.speed;
+      const speed = rawSpeed !== null && rawSpeed !== undefined && !isNaN(rawSpeed) ? Math.max(0, Math.round(rawSpeed * 3.6)) : 0.0;
 
       // Dynamic movement-based heading calculation
       let effectiveHeading = lastHeadingRef.current || 0.0;
@@ -583,7 +606,7 @@ function App() {
 
         const now = Date.now();
         // Prevent overlapping HTTP POST requests
-        if (isSendingRef.current && (now - lastSentTimeRef.current) < 1000) {
+        if (isSendingRef.current && (now - lastSentTimeRef.current) < 1200) {
           return;
         }
 
@@ -592,9 +615,13 @@ function App() {
           isSendingRef.current = true;
           lastSentTimeRef.current = now;
 
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 6000);
+
           fetch('/api/driver/location', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({
               ...identity,
               route_id: assignedRouteRef.current?.id || assignedRoute?.id || null,
@@ -607,6 +634,7 @@ function App() {
           })
           .then(res => res.json())
           .then(data => {
+            clearTimeout(timeoutId);
             if (data && data.deviated) {
               handleLocationToggle(false);
               setDeviationAlert(data.message || "Siz belgilangan marshrut chizig'idan uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
@@ -616,7 +644,10 @@ function App() {
               setRouteWarning(data.message || "Joylashuvni yoqish uchun avval marshrut boshlanish nuqtasiga yoki marshrut chizig'iga yaqinlashing.");
             }
           })
-          .catch(err => console.error("GPS send error:", err))
+          .catch(err => {
+            clearTimeout(timeoutId);
+            console.error("GPS send error:", err);
+          })
           .finally(() => {
             isSendingRef.current = false;
           });
@@ -624,43 +655,105 @@ function App() {
       }
     };
 
-    // 1. Initial Position check
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        sendPosition,
-        () => {},
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 3000 }
-      );
+    // Multi-strategy location requester (Telegram LocationManager + HTML5 Geolocation with safety timer)
+    const requestFreshLocation = () => {
+      const tg = window.Telegram?.WebApp;
+      const lm = tg?.LocationManager;
 
-      // 2. High-Accuracy Continuous Watcher
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        sendPosition,
-        (err) => console.warn("Watch position notice:", err),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 2000 }
-      );
-    }
+      // 1. Telegram native LocationManager (direct native bridge)
+      if (lm && typeof lm.getLocation === 'function' && lm.isLocationAvailable) {
+        try {
+          lm.getLocation((pos) => {
+            if (pos && typeof pos.latitude === 'number' && typeof pos.longitude === 'number') {
+              sendPosition({
+                coords: {
+                  latitude: pos.latitude,
+                  longitude: pos.longitude,
+                  heading: pos.course || 0,
+                  speed: pos.speed || 0,
+                  accuracy: pos.accuracy || 10
+                }
+              });
+            }
+          });
+        } catch (e) {
+          console.warn("Telegram LocationManager getLocation notice:", e);
+        }
+      }
 
-    // 3. Watchdog Polling Interval (Non-overlapping: only fires if watchPosition has been silent for > 3.5s)
+      // 2. HTML5 Geolocation with non-blocking safety timer
+      if ("geolocation" in navigator && !isGpsBusyRef.current) {
+        isGpsBusyRef.current = true;
+        const safetyTimer = setTimeout(() => {
+          isGpsBusyRef.current = false;
+        }, 4000);
+
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            clearTimeout(safetyTimer);
+            isGpsBusyRef.current = false;
+            sendPosition(pos);
+          },
+          () => {
+            // High-accuracy failed/timed out, try fallback with cached or low accuracy
+            navigator.geolocation.getCurrentPosition(
+              (fallbackPos) => {
+                clearTimeout(safetyTimer);
+                isGpsBusyRef.current = false;
+                sendPosition(fallbackPos);
+              },
+              () => {
+                clearTimeout(safetyTimer);
+                isGpsBusyRef.current = false;
+              },
+              { enableHighAccuracy: false, timeout: 3500, maximumAge: 5000 }
+            );
+          },
+          { enableHighAccuracy: true, timeout: 4000, maximumAge: 2000 }
+        );
+      }
+    };
+
+    // Continuous Watcher Starter (Auto-restartable)
+    const startWatcher = () => {
+      if (watchIdRef.current !== null && "geolocation" in navigator) {
+        try { navigator.geolocation.clearWatch(watchIdRef.current); } catch (e) {}
+        watchIdRef.current = null;
+      }
+
+      if ("geolocation" in navigator) {
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          sendPosition,
+          (err) => console.warn("Watch position notice:", err),
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+        );
+      }
+    };
+
+    // 1. Initial Position check & Start continuous watcher
+    requestFreshLocation();
+    startWatcher();
+
+    // 2. Watchdog Heartbeat (Every 2.5 seconds): Self-healing & Active Push
     const watchdogInterval = setInterval(() => {
       if (isOnlineRef.current) {
-        const elapsed = Date.now() - lastSentTimeRef.current;
-        if (elapsed > 3500 && !isGpsBusyRef.current && "geolocation" in navigator) {
-          isGpsBusyRef.current = true;
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              isGpsBusyRef.current = false;
-              sendPosition(pos);
-            },
-            () => {
-              isGpsBusyRef.current = false;
-            },
-            { enableHighAccuracy: true, timeout: 7000, maximumAge: 3000 }
-          );
+        const now = Date.now();
+        const silentGpsElapsed = now - lastGpsFixTimeRef.current;
+
+        // Auto-heal: If watchPosition went silent for > 7s on Android, restart it
+        if (silentGpsElapsed > 7000) {
+          startWatcher();
+        }
+
+        // Active poll: ensure position is transmitted every 2-3 seconds while driving
+        const elapsedSinceSend = now - lastSentTimeRef.current;
+        if (elapsedSinceSend > 2200) {
+          requestFreshLocation();
         }
       }
     }, 2500);
 
-    // 4. Screen Wake Lock Management
+    // 3. Screen Wake Lock Management
     const requestWakeLock = async () => {
       try {
         if ('wakeLock' in navigator && !wakeLockRef.current && isOnlineRef.current) {
@@ -675,24 +768,19 @@ function App() {
       requestWakeLock();
     }
 
-    // 5. Visibility Change (Phone unlocked or browser returned to foreground)
+    // 4. Visibility Change (Phone unlocked or browser returned to foreground)
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && isOnlineRef.current) {
         requestWakeLock();
-        if ("geolocation" in navigator) {
-          navigator.geolocation.getCurrentPosition(
-            sendPosition,
-            () => {},
-            { enableHighAccuracy: true, timeout: 8000, maximumAge: 2000 }
-          );
-        }
+        startWatcher();
+        requestFreshLocation();
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       if (watchIdRef.current !== null && "geolocation" in navigator) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+        try { navigator.geolocation.clearWatch(watchIdRef.current); } catch (e) {}
         watchIdRef.current = null;
       }
       clearInterval(watchdogInterval);
