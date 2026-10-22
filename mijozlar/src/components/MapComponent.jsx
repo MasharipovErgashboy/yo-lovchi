@@ -176,45 +176,49 @@ function determineDriverDirection(driver, prevDriverState, polyPoints, fallbackI
     return (prevDriverState && prevDriverState.direction) || (fallbackIndex % 2 === 0 ? 'ketmoqda' : 'kelmoqda');
   }
 
-  // 1. Check if backend database recorded terminal departure
-  if (driver.last_terminal === 'start') {
-    return 'ketmoqda';
-  }
-  if (driver.last_terminal === 'end') {
-    return 'kelmoqda';
-  }
-
   const startPt = polyPoints[0];
   const endPt = polyPoints[polyPoints.length - 1];
   const distToStart = getDistanceMeters(lat, lng, startPt[0], startPt[1]);
   const distToEnd = getDistanceMeters(lat, lng, endPt[0], endPt[1]);
 
-  // 2. Terminal arrival checks (within 650 meters of terminals)
-  if (distToStart <= 650) {
+  // 1. Terminal arrival checks (within 450 meters of terminals)
+  if (distToStart <= 450) {
     return 'ketmoqda'; // at start terminal -> heading to end
   }
-  if (distToEnd <= 650) {
+  if (distToEnd <= 450) {
     return 'kelmoqda'; // at end terminal -> heading back to start
   }
 
-  // 3. Movement-based heading check against route road bearing
-  if (driver.heading && Number(driver.heading) > 0) {
+  // 2. Real-time GPS movement heading check against road bearing
+  if (driver.heading !== undefined && driver.heading !== null && Number(driver.heading) > 0) {
     const routeBearing = getRouteSegmentBearing(lat, lng, polyPoints);
     if (routeBearing !== null) {
       const diffForward = angleDelta(Number(driver.heading), routeBearing);
       const diffBackward = angleDelta(Number(driver.heading), (routeBearing + 180) % 360);
-      if (diffForward < 60 && diffForward < diffBackward) {
+      if (diffForward < 70 && diffForward < diffBackward) {
         return 'ketmoqda';
       }
-      if (diffBackward < 60 && diffBackward < diffForward) {
+      if (diffBackward < 70 && diffBackward < diffForward) {
         return 'kelmoqda';
       }
+      if (prevDriverState && prevDriverState.direction) {
+        return prevDriverState.direction;
+      }
+      return distToStart <= distToEnd ? 'ketmoqda' : 'kelmoqda';
     }
   }
 
-  // 4. Keep previous direction while mid-route
+  // 3. Keep previous direction while mid-route
   if (prevDriverState && prevDriverState.direction) {
     return prevDriverState.direction;
+  }
+
+  // 4. Fallback to backend recorded terminal departure if available
+  if (driver.last_terminal === 'start') {
+    return 'ketmoqda';
+  }
+  if (driver.last_terminal === 'end') {
+    return 'kelmoqda';
   }
 
   // 5. Fallback based on closest terminal
@@ -244,7 +248,8 @@ export default function MapComponent({
   setSelectedDirection: setPropDirection,
   onBackToRoutes,
   userLocation = null,
-  isUserLocationActive = false
+  isUserLocationActive = false,
+  targetVehicle = null
 }) {
   const mapContainerRef = useRef(null);
   const mapInstance = useRef(null);
@@ -402,11 +407,41 @@ export default function MapComponent({
     }
   }, [initialRouteId, routes]);
 
+  const hasFocusedTargetVehicle = useRef(null);
+
   // When route or direction changes, reset auto-zoom flag to zoom to nearest car
   useEffect(() => {
     hasAutoZoomedToNearest.current = false;
     userHasMovedMap.current = false;
+    hasFocusedTargetVehicle.current = null;
   }, [selectedRoute?.id, currentDirection, isUserLocationActive]);
+
+  // Fly to target vehicle if selected from "Avtomobillar" tab
+  useEffect(() => {
+    if (!targetVehicle || !mapInstance.current) return;
+    const vLat = Number(targetVehicle.lat || targetVehicle.latitude);
+    const vLng = Number(targetVehicle.lng || targetVehicle.longitude);
+    if (!vLat || !vLng || isNaN(vLat) || isNaN(vLng)) return;
+
+    const vId = String(targetVehicle.driverId || targetVehicle.driver_id || targetVehicle.id);
+    if (hasFocusedTargetVehicle.current === vId) return;
+    hasFocusedTargetVehicle.current = vId;
+    userHasMovedMap.current = true;
+    hasAutoZoomedToNearest.current = true;
+
+    mapInstance.current.setView([vLat, vLng], 17, { animate: true });
+
+    setTimeout(() => {
+      const markerObj = busMarkersRef.current[vId];
+      if (markerObj && markerObj.marker) {
+        markerObj.marker.openPopup();
+      }
+    }, 450);
+
+    const vPlate = targetVehicle.carNumber || targetVehicle.name || "Avtomobil";
+    setToastMessage(`${vPlate} ko'rsatilmoqda`);
+    setTimeout(() => setToastMessage(null), 2500);
+  }, [targetVehicle]);
 
   // Ultra-fast real-time live drivers fetcher (no caching)
   const fetchLiveDrivers = async () => {
@@ -472,9 +507,17 @@ export default function MapComponent({
     userLayerGroupRef.current = L.layerGroup().addTo(map);
     mapInstance.current = map;
 
-    map.on('movestart dragstart zoomstart', () => {
+    // Only set userHasMovedMap on explicit user touch/drag gesture, not programmatic fitBounds/setView
+    map.on('dragstart touchstart', () => {
       userHasMovedMap.current = true;
     });
+
+    // Invalidate size shortly after mounting to fix any canvas sizing glitches
+    setTimeout(() => {
+      if (mapInstance.current) {
+        mapInstance.current.invalidateSize();
+      }
+    }, 300);
 
     return () => {
       map.remove();
@@ -711,8 +754,11 @@ export default function MapComponent({
       userHasMovedMap.current = false;
       hasAutoZoomedToNearest.current = false;
 
-      // Only fit entire polyline if user location is NOT active
-      if (!isUserLocationActive || !userLocation) {
+      // Only fit entire polyline if user location is NOT active, no target vehicle, and no live cars currently
+      const hasLiveCars = (liveDrivers || []).some(
+        d => d && d.route_id && selectedRoute && String(d.route_id) === String(selectedRoute.id) && d.is_online !== false
+      );
+      if ((!isUserLocationActive || !userLocation) && !targetVehicle && !hasLiveCars) {
         const bounds = L.latLngBounds(polyPoints);
         mapInstance.current.fitBounds(bounds, {
           paddingTopLeft: [40, 40],
@@ -819,27 +865,45 @@ export default function MapComponent({
     nearestDriverRef.current = nearest;
     setNearestDriverState(nearest);
 
-    // Auto zoom smoothly to user + nearest vehicle when map opens or direction changes
-    if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng && mapInstance.current && !hasAutoZoomedToNearest.current && !userHasMovedMap.current) {
-      const uLat = Number(userLocation.lat);
-      const uLng = Number(userLocation.lng);
+    // Auto zoom smoothly to user + nearest vehicle, or live vehicles on route when map opens
+    if (mapInstance.current && !hasAutoZoomedToNearest.current && !userHasMovedMap.current && !targetVehicle) {
+      if (isUserLocationActive && userLocation && userLocation.lat && userLocation.lng) {
+        const uLat = Number(userLocation.lat);
+        const uLng = Number(userLocation.lng);
 
-      if (nearest && nearest.latitude && nearest.longitude) {
-        const dLat = Number(nearest.latitude);
-        const dLng = Number(nearest.longitude);
-        const bounds = L.latLngBounds([
-          [uLat, uLng],
-          [dLat, dLng]
-        ]);
-        mapInstance.current.fitBounds(bounds, {
-          paddingTopLeft: [70, 70],
-          paddingBottomRight: [70, isSheetCollapsed ? 140 : 280],
-          maxZoom: 16,
-          animate: true
-        });
-        hasAutoZoomedToNearest.current = true;
-      } else if (liveDrivers.length > 0) {
-        mapInstance.current.setView([uLat, uLng], 16, { animate: true });
+        if (nearest && nearest.latitude && nearest.longitude) {
+          const dLat = Number(nearest.latitude);
+          const dLng = Number(nearest.longitude);
+          const bounds = L.latLngBounds([
+            [uLat, uLng],
+            [dLat, dLng]
+          ]);
+          mapInstance.current.fitBounds(bounds, {
+            paddingTopLeft: [70, 70],
+            paddingBottomRight: [70, isSheetCollapsed ? 140 : 280],
+            maxZoom: 16,
+            animate: true
+          });
+          hasAutoZoomedToNearest.current = true;
+        } else if (liveDrivers.length > 0) {
+          mapInstance.current.setView([uLat, uLng], 16, { animate: true });
+          hasAutoZoomedToNearest.current = true;
+        }
+      } else if (!isUserLocationActive && visibleDrivers.length > 0) {
+        // When passenger location is off, auto-center on active live cars on the route
+        if (visibleDrivers.length === 1) {
+          const d = visibleDrivers[0];
+          mapInstance.current.setView([Number(d.latitude), Number(d.longitude)], 16, { animate: true });
+        } else {
+          const driverCoords = visibleDrivers.map(d => [Number(d.latitude), Number(d.longitude)]);
+          const bounds = L.latLngBounds(driverCoords);
+          mapInstance.current.fitBounds(bounds, {
+            paddingTopLeft: [70, 70],
+            paddingBottomRight: [70, isSheetCollapsed ? 140 : 280],
+            maxZoom: 16,
+            animate: true
+          });
+        }
         hasAutoZoomedToNearest.current = true;
       }
     }
@@ -1014,6 +1078,31 @@ export default function MapComponent({
     }
   };
 
+  // Center and focus map on the nearest moving vehicle
+  const handleFocusNearestCar = () => {
+    if (!mapInstance.current) return;
+    const target = nearestDriverRef.current || (visibleDriversCount > 0 ? (liveDrivers || []).find(d => selectedRoute && String(d.route_id) === String(selectedRoute.id) && d.is_online !== false) : null);
+    if (target && target.latitude && target.longitude) {
+      userHasMovedMap.current = false;
+      const tLat = Number(target.latitude);
+      const tLng = Number(target.longitude);
+      mapInstance.current.setView([tLat, tLng], 17, { animate: true });
+      const targetId = String(target.driver_id || target.id);
+      setTimeout(() => {
+        const markerObj = busMarkersRef.current[targetId];
+        if (markerObj && markerObj.marker) {
+          markerObj.marker.openPopup();
+        }
+      }, 350);
+      const carTitle = target.car_number || target.name || "Avtomobil";
+      setToastMessage(`${carTitle}ga yaqinlashtirildi`);
+      setTimeout(() => setToastMessage(null), 2000);
+    } else {
+      setToastMessage("Hozirda marshrutda harakatlanayotgan avtomobil yo'q");
+      setTimeout(() => setToastMessage(null), 2000);
+    }
+  };
+
   // Rotation controls: rotate left, rotate right, and reset bearing
   const handleRotateLeft = () => {
     if (!mapInstance.current || !mapInstance.current.setBearing) return;
@@ -1138,6 +1227,36 @@ export default function MapComponent({
       >
         <button className="map-ctrl-btn" onClick={handleLocateMe} title="Mening joylashuvim">
           <Navigation size={18} color="#0066FF" />
+        </button>
+
+        {/* Focus Nearest Moving Car */}
+        <button 
+          className="map-ctrl-btn" 
+          onClick={handleFocusNearestCar} 
+          title="Harakatdagi avtomobilga o'tish"
+          style={{ position: 'relative' }}
+        >
+          <Bus size={18} color="#0066FF" />
+          {visibleDriversCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '-4px',
+              right: '-4px',
+              backgroundColor: '#10B981',
+              color: '#ffffff',
+              fontSize: '10px',
+              fontWeight: '800',
+              borderRadius: '999px',
+              minWidth: '16px',
+              height: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 2px'
+            }}>
+              {visibleDriversCount}
+            </span>
+          )}
         </button>
 
         {/* Zoom Controls */}

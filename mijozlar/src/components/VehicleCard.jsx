@@ -69,8 +69,8 @@ export default function VehicleCard({
         </div>
       </div>
 
-      {/* Stop info block: Faqat joylashuv yoqilgan paytida chiqadi */}
-      {isUserLocationActive && (
+      {/* Stop info block: Har doim bekatlar haqida aniq ma'lumot ko'rsatiladi */}
+      {(currentStopName || nextStopName) && (
         <div className="vehicle-stops-block">
           <div className="stop-row current">
             <div className="stop-row-icon">

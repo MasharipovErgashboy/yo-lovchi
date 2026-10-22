@@ -74,6 +74,7 @@ function App() {
   const [inTelegram, setInTelegram] = useState(() => isInsideTelegram());
   const [activeTab, setActiveTab] = useState('marshrutlar') // 'marshrutlar' | 'xarita' | 'support'
   const [selectedRouteForMap, setSelectedRouteForMap] = useState(null)
+  const [selectedVehicleForMap, setSelectedVehicleForMap] = useState(null)
   const [selectedDirection, setSelectedDirection] = useState('ketmoqda') // 'ketmoqda' | 'kelmoqda'
   const [isUserLocationActive, setIsUserLocationActive] = useState(false)
   const [userLocation, setUserLocation] = useState(null)
@@ -112,11 +113,12 @@ function App() {
     return () => clearTimeout(timer);
   }, [inTelegram]);
 
-  const handleSelectRoute = (routeId, direction) => {
+  const handleSelectRoute = (routeId, direction, vehicle = null) => {
     setSelectedRouteForMap(routeId);
     if (direction) {
       setSelectedDirection(direction);
     }
+    setSelectedVehicleForMap(vehicle || null);
     setActiveTab('xarita');
   };
 
@@ -206,6 +208,7 @@ function App() {
               setSelectedDirection={setSelectedDirection}
               userLocation={userLocation}
               isUserLocationActive={isUserLocationActive}
+              targetVehicle={selectedVehicleForMap}
             />
           )}
           {activeTab === 'support' && <Support />}

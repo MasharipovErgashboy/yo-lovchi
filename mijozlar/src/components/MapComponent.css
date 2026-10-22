@@ -85,6 +85,7 @@
 .bus-marker-wrapper {
   background: transparent !important;
   border: none !important;
+  transition: transform 0.8s linear !important;
 }
 
 .driver-arrow-container {
