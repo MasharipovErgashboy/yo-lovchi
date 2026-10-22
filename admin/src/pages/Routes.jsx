@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, Navigation, Music, Volume2, Lock, Unlock } from 'lucide-react';
+import { 
+  Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, 
+  Navigation, Music, Volume2, Lock, Unlock, AlertTriangle, Sparkles, ShieldCheck 
+} from 'lucide-react';
 import './PagesCommon.css';
 import './Routes.css';
 
@@ -21,6 +24,7 @@ export default function RoutesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [activatingId, setActivatingId] = useState(null);
   const [uploadingStopIdx, setUploadingStopIdx] = useState(null);
+  const [routeToActivate, setRouteToActivate] = useState(null);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingRouteId, setEditingRouteId] = useState(null);
@@ -74,12 +78,8 @@ export default function RoutesPage() {
     setIsAddModalOpen(true);
   };
 
-  const handleToggleRouteActive = async (route) => {
-    if (route.is_active) {
-      return;
-    }
-    
-    if (!window.confirm(`"${route.name}" marshrutini faollashtirmoqchimisiz? Boshqa barcha marshrutlar qulflanadi va ularning haydovchilari offline qilinadi.`)) {
+  const executeToggleRouteActive = async (route) => {
+    if (!route || route.is_active) {
       return;
     }
 
@@ -255,23 +255,67 @@ export default function RoutesPage() {
   return (
     <div className="page-container">
       <div className="routes-header-actions">
-        <h2 style={{ fontSize: '24px', fontWeight: 600 }}>Barcha Marshrutlar</h2>
+        <div>
+          <h2 style={{ fontSize: '24px', fontWeight: 700, margin: 0, letterSpacing: '-0.3px' }}>Barcha Marshrutlar</h2>
+          <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '13px' }}>
+            Tizimdagi marshrutlar, bekatlar va ularning faollik holatini boshqarish
+          </p>
+        </div>
         <button 
           className="btn-primary" 
           onClick={routes.length >= 2 ? undefined : openAddModal}
           disabled={routes.length >= 2}
           style={routes.length >= 2 ? {
-            background: '#475569',
-            borderColor: '#334155',
+            background: 'rgba(51, 65, 85, 0.6)',
+            borderColor: 'rgba(71, 85, 105, 0.4)',
             color: '#94a3b8',
             cursor: 'not-allowed',
-            opacity: 0.65,
+            opacity: 0.7,
             boxShadow: 'none'
           } : {}}
-          title={routes.length >= 2 ? "Ko'pi bilan 2 ta marshrut yaratish mumkin" : "Yangi marshrut qo'shish"}
+          title={routes.length >= 2 ? "Ko'pi bilan 2 ta marshrut yaratish mumkin (1 ta faol, 1 ta zaxira)" : "Yangi marshrut qo'shish"}
         >
           <Plus size={20} /> Yangi marshrut qo'shish
         </button>
+      </div>
+
+      {/* Routes Summary Stats Bar */}
+      <div className="routes-summary-bar">
+        <div className="summary-stat-card">
+          <div className="summary-stat-icon routes">
+            <Navigation size={18} />
+          </div>
+          <div className="summary-stat-info">
+            <span className="summary-stat-label">Jami marshrutlar</span>
+            <strong className="summary-stat-value">{routes.length} / 2 ta</strong>
+          </div>
+        </div>
+
+        <div className="summary-stat-card active-card">
+          <div className="summary-stat-icon active">
+            <Sparkles size={18} />
+          </div>
+          <div className="summary-stat-info">
+            <span className="summary-stat-label">Faol marshrut</span>
+            <strong className="summary-stat-value text-green">
+              {routes.find(r => r.is_active)?.name || "Mavjud emas"}
+            </strong>
+          </div>
+        </div>
+
+        <div className="summary-stat-card locked-card">
+          <div className="summary-stat-icon locked">
+            <Lock size={18} />
+          </div>
+          <div className="summary-stat-info">
+            <span className="summary-stat-label">Qulflangan (Zaxirada)</span>
+            <strong className="summary-stat-value text-amber">
+              {routes.filter(r => !r.is_active).length > 0 
+                ? `${routes.filter(r => !r.is_active).length} ta nofaol` 
+                : "0 ta"}
+            </strong>
+          </div>
+        </div>
       </div>
 
       {loading ? (
@@ -290,35 +334,74 @@ export default function RoutesPage() {
           {routes.map(route => {
             const stopsArray = Array.isArray(route.stops) ? route.stops : [];
             const badgeColor = route.color && route.color.startsWith('#') ? route.color : '#3b82f6';
+            const isLocked = !route.is_active;
 
             return (
-              <div key={route.id} className="glass-card route-card" style={{ borderColor: `${badgeColor}33` }}>
-                <div className="route-header">
+              <div 
+                key={route.id} 
+                className={`glass-card route-card ${isLocked ? 'is-locked-route' : 'is-active-route'}`}
+                style={{ borderColor: isLocked ? 'rgba(245, 158, 11, 0.28)' : 'rgba(16, 185, 129, 0.45)' }}
+              >
+                {/* 1. Status Ribbon Banner */}
+                {route.is_active ? (
+                  <div className="route-status-ribbon active">
+                    <div className="status-ribbon-left">
+                      <div className="active-radar-wrap">
+                        <span className="active-radar-ring"></span>
+                        <span className="active-radar-core"></span>
+                      </div>
+                      <div>
+                        <span className="status-ribbon-title">Asosiy faol marshrut</span>
+                        <span className="status-ribbon-sub">Barcha haydovchilar ayni paytda shu liniyada ishlamoqda</span>
+                      </div>
+                    </div>
+                    <div className="active-badge-tag">
+                      <Check size={13} strokeWidth={3} />
+                      <span>Faol</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="route-status-ribbon locked">
+                    <div className="status-ribbon-left">
+                      <div className="lock-icon-glow">
+                        <Lock size={15} />
+                      </div>
+                      <div>
+                        <span className="status-ribbon-title">Qulfda (Nofaol marshrut)</span>
+                        <span className="status-ribbon-sub">Haydovchilar ulanishi vaqtinchalik cheklangan</span>
+                      </div>
+                    </div>
+                    <button 
+                      type="button" 
+                      className="unlock-action-btn"
+                      onClick={() => setRouteToActivate(route)}
+                      disabled={activatingId === route.id}
+                      title="Ushbu marshrutni asosiy faol holatga chiqarish"
+                    >
+                      {activatingId === route.id ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          <span>Ochilmoqda...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Unlock size={14} />
+                          <span>Qulfdan chiqarish</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* 2. Route Card Inner Body */}
+                <div className="route-card-body">
+                  <div className="route-header">
                   <div className="route-badge" style={{ background: `linear-gradient(135deg, ${badgeColor}, #1e293b)`, border: `1px solid ${badgeColor}` }}>
                     {route.number}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>{route.name}</h3>
-                      {route.is_active ? (
-                        <span style={{ 
-                          display: 'inline-flex', alignItems: 'center', gap: '4px', 
-                          background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', 
-                          border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 8px', 
-                          borderRadius: '12px', fontSize: '11px', fontWeight: 600 
-                        }}>
-                          <Unlock size={12} /> Faol (Ochiq)
-                        </span>
-                      ) : (
-                        <span style={{ 
-                          display: 'inline-flex', alignItems: 'center', gap: '4px', 
-                          background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', 
-                          border: '1px solid rgba(239, 68, 68, 0.3)', padding: '2px 8px', 
-                          borderRadius: '12px', fontSize: '11px', fontWeight: 600 
-                        }}>
-                          <Lock size={12} /> Qulfda (Noaktiv)
-                        </span>
-                      )}
                     </div>
                     {route.direction && (
                       <div style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -326,21 +409,13 @@ export default function RoutesPage() {
                       </div>
                     )}
                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ 
-                        display: 'inline-flex', alignItems: 'center', gap: '5px', 
-                        background: 'rgba(255,255,255,0.04)', padding: '2px 8px', borderRadius: '6px',
-                        fontSize: '11px', border: '1px solid rgba(255,255,255,0.08)'
-                      }}>
+                      <span className="route-dir-badge forward">
                         <svg width="12" height="12" viewBox="0 0 32 32">
                           <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={route.arrow_color_forward || '#0066FF'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
                         </svg>
                         Ketmoqda: <strong style={{ color: route.arrow_color_forward || '#0066FF' }}>{route.arrow_color_forward || '#0066FF'}</strong>
                       </span>
-                      <span style={{ 
-                        display: 'inline-flex', alignItems: 'center', gap: '5px', 
-                        background: 'rgba(255,255,255,0.04)', padding: '2px 8px', borderRadius: '6px',
-                        fontSize: '11px', border: '1px solid rgba(255,255,255,0.08)'
-                      }}>
+                      <span className="route-dir-badge backward">
                         <svg width="12" height="12" viewBox="0 0 32 32" style={{ transform: 'rotate(180deg)' }}>
                           <path d="M16 2 L28 27 L16 21 L4 27 Z" fill={route.arrow_color_backward || '#10B981'} stroke="#ffffff" strokeWidth="2" strokeLinejoin="round"/>
                         </svg>
@@ -348,53 +423,8 @@ export default function RoutesPage() {
                       </span>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    {!route.is_active ? (
-                      <button 
-                        type="button" 
-                        className="route-lock-btn locked"
-                        title="Marshrutni faollashtirish (Qulfdan chiqarish)"
-                        disabled={activatingId === route.id}
-                        onClick={() => handleToggleRouteActive(route)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          background: 'linear-gradient(135deg, #10b981, #059669)',
-                          color: '#ffffff',
-                          border: 'none',
-                          padding: '6px 12px',
-                          borderRadius: '8px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          cursor: activatingId === route.id ? 'wait' : 'pointer',
-                          boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        {activatingId === route.id ? <Loader2 size={14} className="animate-spin" /> : <Unlock size={14} />}
-                        <span>Qulfdan chiqarish</span>
-                      </button>
-                    ) : (
-                      <span 
-                        title="Ushbu marshrut hozirda faol ishlamoqda"
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          color: '#10b981',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          padding: '4px 8px',
-                          background: 'rgba(16, 185, 129, 0.08)',
-                          borderRadius: '6px',
-                          border: '1px solid rgba(16, 185, 129, 0.2)'
-                        }}
-                      >
-                        <Check size={14} /> Faol
-                      </span>
-                    )}
 
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <button 
                       className="icon-btn-small" 
                       title="Tahrirlash"
@@ -449,6 +479,24 @@ export default function RoutesPage() {
                     })}
                   </ul>
                 </div>
+              </div>
+
+              {/* 4. Bottom Status & Information Bar */}
+                {isLocked ? (
+                  <div className="route-locked-footer-bar">
+                    <div className="locked-footer-text">
+                      <Lock size={14} className="locked-footer-icon" />
+                      <span>Ushbu marshrut qulfda saqlanmoqda. Boshlash uchun yuqoridagi <strong>«Qulfdan chiqarish»</strong> tugmasini bosing.</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="route-active-footer-bar">
+                    <div className="active-footer-text">
+                      <ShieldCheck size={14} className="active-footer-icon" />
+                      <span>Marshrut faol. Bot va ilovada barcha buyurtmalar hamda haydovchilar ayni vaqtda shu marshrutga ulangan.</span>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -776,6 +824,90 @@ export default function RoutesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Activate / Unlock Confirmation Modal */}
+      {routeToActivate && typeof document !== 'undefined' && createPortal(
+        <div className="modal-overlay" onClick={() => setRouteToActivate(null)}>
+          <div className="modal-content route-unlock-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="unlock-modal-icon-wrap">
+                <Unlock size={22} color="#10b981" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-main)' }}>Marshrutni qulfdan chiqarish</h3>
+                <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '13px' }}>
+                  Marshrutni tizimda asosiy faol holatga o'tkazish
+                </p>
+              </div>
+              <button className="icon-btn-small" onClick={() => setRouteToActivate(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="unlock-modal-body">
+              <div className="route-switch-preview-card">
+                <div 
+                  className="preview-route-badge" 
+                  style={{ 
+                    backgroundColor: routeToActivate.color && routeToActivate.color.startsWith('#') ? routeToActivate.color : '#3b82f6' 
+                  }}
+                >
+                  {routeToActivate.number}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: '15px', color: '#f8fafc' }}>{routeToActivate.name}</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>{routeToActivate.direction}</div>
+                </div>
+                <div className="preview-status-target">
+                  <Unlock size={12} />
+                  <span>Faollashtiriladi</span>
+                </div>
+              </div>
+
+              <div className="unlock-modal-warning-box">
+                <AlertTriangle size={20} color="#f59e0b" style={{ flexShrink: 0, marginTop: '2px' }} />
+                <div style={{ fontSize: '13px', lineHeight: '1.5', color: '#e2e8f0' }}>
+                  <strong>Muhim ma'lumot:</strong> Ushbu marshrut ochilganda, hozirgi ishlab turgan marshrut avtomatik tarzda <strong>qulflanadi</strong> va unga ulangan barcha haydovchilar offline holatiga o'tkaziladi.
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: '24px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                className="action-btn"
+                onClick={() => setRouteToActivate(null)}
+                style={{ padding: '10px 18px', borderRadius: '10px', fontWeight: 500 }}
+              >
+                Bekor qilish
+              </button>
+              <button 
+                type="button" 
+                className="unlock-modal-confirm-btn"
+                disabled={activatingId === routeToActivate.id}
+                onClick={async () => {
+                  const r = routeToActivate;
+                  setRouteToActivate(null);
+                  await executeToggleRouteActive(r);
+                }}
+              >
+                {activatingId === routeToActivate.id ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Faollashtirilmoqda...</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock size={16} />
+                    <span>Qulfdan chiqarish va faollashtirish</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>,
         document.body
