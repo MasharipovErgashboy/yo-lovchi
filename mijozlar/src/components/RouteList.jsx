@@ -528,7 +528,7 @@ export default function RouteList({
       } else if (hasPassedUser) {
         arrivalStatus = 'passed';
         etaMinutes = Math.max(1, Math.round(distMeters / 380));
-        etaSubtitle = "O'tib ketgan";
+        etaSubtitle = "sizgacha yetib keladi";
       } else {
         arrivalStatus = 'approaching';
         etaMinutes = Math.max(1, Math.round(distMeters / 380));

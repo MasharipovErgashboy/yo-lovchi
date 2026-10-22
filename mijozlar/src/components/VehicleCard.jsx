@@ -45,7 +45,7 @@ export default function VehicleCard({
           <div>
             <div className="vehicle-driver-name">
               {isUserLocationActive 
-                ? (arrivalStatus === 'arrived' ? 'Yoningizda' : (arrivalStatus === 'passed' ? "O'tib ketgan" : 'Sizgacha'))
+                ? (arrivalStatus === 'arrived' ? 'Yoningizda' : 'Sizgacha')
                 : stopWithGa}
             </div>
             <div className="vehicle-sub-status">
