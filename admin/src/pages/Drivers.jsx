@@ -49,11 +49,27 @@ export default function Drivers() {
   const formatShiftTime = (timeStr) => {
     if (!timeStr) return null;
     try {
-      const parts = timeStr.trim().split(' ');
-      if (parts.length > 1) {
-        return parts[1];
+      let t = String(timeStr).trim();
+      let timePart = t;
+      if (t.includes('T')) {
+        timePart = t.split('T')[1];
+      } else if (t.includes(' ')) {
+        timePart = t.split(' ')[1];
       }
-      return timeStr;
+      
+      const timeComponents = timePart.split(':');
+      if (timeComponents.length < 2) return timeStr;
+      
+      let hours = parseInt(timeComponents[0], 10);
+      const minutes = timeComponents[1].padStart(2, '0');
+      if (isNaN(hours)) return timeStr;
+      
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12; // 0 hour becomes 12
+      const formattedHours = String(hours).padStart(2, '0');
+      
+      return `${formattedHours}:${minutes} ${ampm}`;
     } catch {
       return timeStr;
     }
@@ -441,7 +457,11 @@ export default function Drivers() {
                   </div>
                   <div style={{ fontSize: '15px', fontWeight: '600', lineHeight: '1.5' }}>
                     Boshladi: {selectedDriver.startTime} <br/>
-                    Tugatdi: {selectedDriver.endTime ? selectedDriver.endTime : <span style={{color: '#10b981'}}>Hozir ishda</span>}
+                    Tugatdi: {
+                      selectedDriver.status === 'Online'
+                        ? <span style={{color: '#10b981'}}>Hozir ishda</span>
+                        : (selectedDriver.endTime || '-')
+                    }
                   </div>
                 </div>
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>

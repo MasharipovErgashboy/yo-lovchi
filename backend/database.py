@@ -306,8 +306,18 @@ def get_candidates(status: Optional[str] = None) -> List[Dict[str, Any]]:
             dl.is_online as dl_is_online,
             dl.active_on_route as dl_active_on_route,
             dl.updated_at as location_updated_at,
-            dl.shift_started_at,
-            dl.shift_ended_at,
+            CASE 
+                WHEN dl.shift_started_at IS NOT NULL 
+                     AND DATE(dl.shift_started_at) = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')::date)
+                THEN dl.shift_started_at 
+                ELSE NULL 
+            END as shift_started_at,
+            CASE 
+                WHEN dl.shift_ended_at IS NOT NULL 
+                     AND DATE(dl.shift_ended_at) = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')::date)
+                THEN dl.shift_ended_at 
+                ELSE NULL 
+            END as shift_ended_at,
             COALESCE(trips_stat.trips_today, 0) as trips_today,
             COALESCE(trips_stat.trips_total, 0) as trips_total
         FROM candidates c
@@ -316,7 +326,7 @@ def get_candidates(status: Optional[str] = None) -> List[Dict[str, Any]]:
         LEFT JOIN (
             SELECT 
                 driver_id,
-                COUNT(*) FILTER (WHERE completed_at >= CURRENT_DATE) as trips_today,
+                COUNT(*) FILTER (WHERE DATE(completed_at) = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')::date)) as trips_today,
                 COUNT(*) as trips_total
             FROM driver_trips
             GROUP BY driver_id
@@ -361,8 +371,18 @@ def get_candidate_by_id(candidate_id: int) -> Optional[Dict[str, Any]]:
             dl.is_online as dl_is_online,
             dl.active_on_route as dl_active_on_route,
             dl.updated_at as location_updated_at,
-            dl.shift_started_at,
-            dl.shift_ended_at,
+            CASE 
+                WHEN dl.shift_started_at IS NOT NULL 
+                     AND DATE(dl.shift_started_at) = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')::date)
+                THEN dl.shift_started_at 
+                ELSE NULL 
+            END as shift_started_at,
+            CASE 
+                WHEN dl.shift_ended_at IS NOT NULL 
+                     AND DATE(dl.shift_ended_at) = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')::date)
+                THEN dl.shift_ended_at 
+                ELSE NULL 
+            END as shift_ended_at,
             COALESCE(trips_stat.trips_today, 0) as trips_today,
             COALESCE(trips_stat.trips_total, 0) as trips_total
         FROM candidates c
@@ -371,7 +391,7 @@ def get_candidate_by_id(candidate_id: int) -> Optional[Dict[str, Any]]:
         LEFT JOIN (
             SELECT 
                 driver_id,
-                COUNT(*) FILTER (WHERE completed_at >= CURRENT_DATE) as trips_today,
+                COUNT(*) FILTER (WHERE DATE(completed_at) = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')::date)) as trips_today,
                 COUNT(*) as trips_total
             FROM driver_trips
             GROUP BY driver_id
@@ -406,8 +426,18 @@ def get_candidate_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
             dl.is_online as dl_is_online,
             dl.active_on_route as dl_active_on_route,
             dl.updated_at as location_updated_at,
-            dl.shift_started_at,
-            dl.shift_ended_at,
+            CASE 
+                WHEN dl.shift_started_at IS NOT NULL 
+                     AND DATE(dl.shift_started_at) = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')::date)
+                THEN dl.shift_started_at 
+                ELSE NULL 
+            END as shift_started_at,
+            CASE 
+                WHEN dl.shift_ended_at IS NOT NULL 
+                     AND DATE(dl.shift_ended_at) = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')::date)
+                THEN dl.shift_ended_at 
+                ELSE NULL 
+            END as shift_ended_at,
             COALESCE(trips_stat.trips_today, 0) as trips_today,
             COALESCE(trips_stat.trips_total, 0) as trips_total
         FROM candidates c
@@ -416,7 +446,7 @@ def get_candidate_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
         LEFT JOIN (
             SELECT 
                 driver_id,
-                COUNT(*) FILTER (WHERE completed_at >= CURRENT_DATE) as trips_today,
+                COUNT(*) FILTER (WHERE DATE(completed_at) = ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')::date)) as trips_today,
                 COUNT(*) as trips_total
             FROM driver_trips
             GROUP BY driver_id
@@ -998,10 +1028,12 @@ def create_route(
     
     # If newly created route is active, deactivate other routes to guarantee only 1 route is active
     if bool(is_active) and row and "id" in row:
-        cursor.execute("UPDATE routes SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id != %s;", (row["id"],))
+        cursor.execute("UPDATE routes SET is_active = false, updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent') WHERE id != %s;", (row["id"],))
         cursor.execute("""
             UPDATE driver_locations
-            SET is_online = false, active_on_route = false, shift_ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            SET is_online = false, active_on_route = false, 
+                shift_ended_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'), 
+                updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
             WHERE route_id != %s AND is_online = true;
         """, (row["id"],))
 
@@ -1019,16 +1051,18 @@ def set_active_route(route_id: int) -> Optional[Dict[str, Any]]:
     cursor = conn.cursor()
     
     # 1. Deactivate all other routes
-    cursor.execute("UPDATE routes SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id != %s;", (route_id,))
+    cursor.execute("UPDATE routes SET is_active = false, updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent') WHERE id != %s;", (route_id,))
     
     # 2. Activate target route
-    cursor.execute("UPDATE routes SET is_active = true, updated_at = CURRENT_TIMESTAMP WHERE id = %s RETURNING id;", (route_id,))
+    cursor.execute("UPDATE routes SET is_active = true, updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent') WHERE id = %s RETURNING id;", (route_id,))
     row = cursor.fetchone()
     
     # 3. Disconnect drivers of inactive routes
     cursor.execute("""
         UPDATE driver_locations
-        SET is_online = false, active_on_route = false, shift_ended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        SET is_online = false, active_on_route = false, 
+            shift_ended_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'), 
+            updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
         WHERE route_id != %s AND is_online = true;
     """, (route_id,))
     
@@ -1140,7 +1174,9 @@ def assign_driver_to_route(driver_id: int, route_id: Optional[int]) -> bool:
         else:
             cursor.execute("""
                 UPDATE driver_locations
-                SET is_online = FALSE, route_id = NULL
+                SET is_online = FALSE, route_id = NULL,
+                    shift_ended_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'),
+                    updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
                 WHERE driver_id = %s;
             """, (driver_id,))
         
@@ -1293,17 +1329,17 @@ def check_and_record_trip(cursor, driver_id: int, route_id: Optional[int], lat: 
             # Driver arrived at start terminal from end terminal -> 1 trip completed!
             cursor.execute("""
                 INSERT INTO driver_trips (driver_id, route_id, direction, completed_at)
-                VALUES (%s, %s, 'backward', CURRENT_TIMESTAMP);
+                VALUES (%s, %s, 'backward', (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'));
             """, (driver_id, route_id))
             cursor.execute("""
                 UPDATE driver_locations 
-                SET last_terminal = 'start', last_terminal_time = CURRENT_TIMESTAMP
+                SET last_terminal = 'start', last_terminal_time = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
                 WHERE driver_id = %s;
             """, (driver_id,))
         elif last_term is None:
             cursor.execute("""
                 UPDATE driver_locations 
-                SET last_terminal = 'start', last_terminal_time = CURRENT_TIMESTAMP
+                SET last_terminal = 'start', last_terminal_time = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
                 WHERE driver_id = %s;
             """, (driver_id,))
 
@@ -1313,17 +1349,17 @@ def check_and_record_trip(cursor, driver_id: int, route_id: Optional[int], lat: 
             # Driver arrived at end terminal from start terminal -> 1 trip completed!
             cursor.execute("""
                 INSERT INTO driver_trips (driver_id, route_id, direction, completed_at)
-                VALUES (%s, %s, 'forward', CURRENT_TIMESTAMP);
+                VALUES (%s, %s, 'forward', (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'));
             """, (driver_id, route_id))
             cursor.execute("""
                 UPDATE driver_locations 
-                SET last_terminal = 'end', last_terminal_time = CURRENT_TIMESTAMP
+                SET last_terminal = 'end', last_terminal_time = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
                 WHERE driver_id = %s;
             """, (driver_id,))
         elif last_term is None:
             cursor.execute("""
                 UPDATE driver_locations 
-                SET last_terminal = 'end', last_terminal_time = CURRENT_TIMESTAMP
+                SET last_terminal = 'end', last_terminal_time = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
                 WHERE driver_id = %s;
             """, (driver_id,))
 
@@ -1340,7 +1376,7 @@ def record_driver_trip(driver_id: int, route_id: Optional[int] = None, direction
     
     cursor.execute("""
         INSERT INTO driver_trips (driver_id, route_id, direction, completed_at)
-        VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+        VALUES (%s, %s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'))
         RETURNING *;
     """, (driver_id, target_route, direction))
     row = cursor.fetchone()
@@ -1391,7 +1427,9 @@ def update_driver_location(
     if not target_route_id:
         cursor.execute("""
             UPDATE driver_locations
-            SET is_online = false, active_on_route = false, route_id = NULL, updated_at = CURRENT_TIMESTAMP
+            SET is_online = false, active_on_route = false, route_id = NULL, 
+                shift_ended_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'),
+                updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
             WHERE driver_id = %s;
         """, (driver_id,))
         conn.commit()
@@ -1404,7 +1442,8 @@ def update_driver_location(
             driver_id, route_id, latitude, longitude, heading, speed, capacity,
             is_online, active_on_route, shift_started_at, shift_ended_at, updated_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, true, true, CURRENT_TIMESTAMP, NULL, CURRENT_TIMESTAMP)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, true, true, 
+                (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'), NULL, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'))
         ON CONFLICT (driver_id) DO UPDATE
         SET route_id = COALESCE(EXCLUDED.route_id, driver_locations.route_id),
             latitude = EXCLUDED.latitude,
@@ -1415,12 +1454,18 @@ def update_driver_location(
             is_online = true,
             active_on_route = true,
             shift_started_at = CASE 
-                WHEN driver_locations.is_online = false OR driver_locations.shift_started_at IS NULL OR driver_locations.shift_ended_at IS NOT NULL 
-                THEN CURRENT_TIMESTAMP 
+                WHEN driver_locations.shift_started_at IS NULL 
+                     OR DATE(driver_locations.shift_started_at) < ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')::date)
+                THEN (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
                 ELSE driver_locations.shift_started_at 
             END,
-            shift_ended_at = NULL,
-            updated_at = CURRENT_TIMESTAMP
+            shift_ended_at = CASE 
+                WHEN driver_locations.shift_started_at IS NULL 
+                     OR DATE(driver_locations.shift_started_at) < ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')::date)
+                THEN NULL
+                ELSE driver_locations.shift_ended_at 
+            END,
+            updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
         RETURNING *;
     """, (driver_id, target_route_id, latitude, longitude, heading, speed, capacity))
     row = cursor.fetchone()
@@ -1443,8 +1488,8 @@ def set_driver_offline(driver_id: int) -> bool:
         UPDATE driver_locations 
         SET is_online = false,
             active_on_route = false,
-            shift_ended_at = CURRENT_TIMESTAMP,
-            updated_at = CURRENT_TIMESTAMP
+            shift_ended_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'),
+            updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
         WHERE driver_id = %s;
     """, (driver_id,))
     updated = cursor.rowcount
