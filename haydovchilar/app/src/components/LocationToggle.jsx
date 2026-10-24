@@ -34,7 +34,7 @@ function getDistanceToSegment(pLat, pLng, aLat, aLng, bLat, bLng) {
   return getDistanceMeters(pLat, pLng, projLat, projLng);
 }
 
-function calculateMinDistanceToRoute(driverLat, driverLng, route) {
+export function calculateMinDistanceToRoute(driverLat, driverLng, route) {
   if (!route) return 0;
   let minDist = Infinity;
 
@@ -299,7 +299,7 @@ export default function LocationToggle({
             style={{
               background: (!hasRoute || isRouteInactive) 
                 ? 'rgba(156, 163, 175, 0.12)' 
-                : (enabled ? 'rgba(0, 102, 255, 0.08)' : 'rgba(0, 102, 255, 0.05)')
+                : (enabled ? 'rgba(16, 185, 129, 0.12)' : 'rgba(0, 102, 255, 0.05)')
             }}
           >
             <div 
@@ -307,7 +307,7 @@ export default function LocationToggle({
               style={{
                 background: (!hasRoute || isRouteInactive) 
                   ? 'rgba(156, 163, 175, 0.18)' 
-                  : (enabled ? 'rgba(0, 102, 255, 0.15)' : 'rgba(0, 102, 255, 0.1)')
+                  : (enabled ? 'rgba(16, 185, 129, 0.18)' : 'rgba(0, 102, 255, 0.1)')
               }}
             >
               <div 
@@ -315,7 +315,7 @@ export default function LocationToggle({
                 style={{
                   background: (!hasRoute || isRouteInactive) 
                     ? 'rgba(156, 163, 175, 0.25)' 
-                    : (enabled ? 'rgba(0, 102, 255, 0.25)' : 'rgba(0, 102, 255, 0.2)')
+                    : (enabled ? 'rgba(16, 185, 129, 0.25)' : 'rgba(0, 102, 255, 0.2)')
                 }}
               >
                 <div 
@@ -323,7 +323,7 @@ export default function LocationToggle({
                   style={{ 
                     backgroundColor: (!hasRoute || isRouteInactive) 
                       ? '#9ca3af' 
-                      : (enabled ? 'var(--blue-primary)' : 'var(--text-secondary)') 
+                      : (enabled ? '#10b981' : 'var(--blue-primary)') 
                   }}
                 >
                   <Navigation 
@@ -353,16 +353,14 @@ export default function LocationToggle({
                     : "Sizning joylashuvingiz yo'lovchilarga ko'rinmaydi")}
           </p>
 
-
-
           {hasRoute && (
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              background: isRouteInactive ? 'rgba(239, 68, 68, 0.08)' : 'rgba(0, 102, 255, 0.08)',
-              color: isRouteInactive ? '#ef4444' : 'var(--blue-primary)',
-              border: `1px solid ${isRouteInactive ? 'rgba(239, 68, 68, 0.25)' : 'rgba(0, 102, 255, 0.2)'}`,
+              background: isRouteInactive ? 'rgba(239, 68, 68, 0.08)' : (enabled ? 'rgba(16, 185, 129, 0.08)' : 'rgba(0, 102, 255, 0.08)'),
+              color: isRouteInactive ? '#ef4444' : (enabled ? '#10b981' : 'var(--blue-primary)'),
+              border: `1px solid ${isRouteInactive ? 'rgba(239, 68, 68, 0.25)' : (enabled ? 'rgba(16, 185, 129, 0.25)' : 'rgba(0, 102, 255, 0.2)')}`,
               padding: '5px 14px',
               borderRadius: '20px',
               fontSize: '12px',
@@ -370,38 +368,68 @@ export default function LocationToggle({
               marginTop: '4px',
               marginBottom: '10px'
             }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: isRouteInactive ? '#ef4444' : 'var(--blue-primary)' }}></span>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: isRouteInactive ? '#ef4444' : (enabled ? '#10b981' : 'var(--blue-primary)') }}></span>
               <span>{assignedRoute.number}-marshrut • {isRouteInactive ? "Qulfda (Noaktiv)" : (assignedRoute.name || "Faol")}</span>
             </div>
           )}
           
-          <button 
-            className="btn-primary" 
-            onClick={handleToggle}
-            disabled={checking}
-            style={{ 
-              backgroundColor: !hasRoute 
-                ? '#94a3b8' 
-                : isRouteInactive
-                  ? '#64748b'
-                  : (enabled ? 'var(--red)' : 'var(--blue-primary)'),
-              opacity: checking ? 0.7 : (!hasRoute || isRouteInactive ? 0.85 : 1),
-              cursor: !hasRoute ? 'not-allowed' : 'pointer',
-              boxShadow: (!hasRoute || isRouteInactive)
-                ? 'none' 
-                : (enabled ? '0 4px 14px rgba(239, 68, 68, 0.35)' : '0 4px 14px rgba(0, 102, 255, 0.35)'),
-              marginTop: '8px',
+          {enabled ? (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '10px',
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.08) 100%)',
+              border: '1px solid rgba(16, 185, 129, 0.35)',
+              color: '#10b981',
+              padding: '14px 20px',
+              borderRadius: '16px',
+              fontSize: '15px',
+              fontWeight: '700',
+              width: '100%',
+              marginTop: '10px',
               marginBottom: '4px',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-            }}
-          >
-            <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />
-            {checking 
-              ? "Tekshirilmoqda..." 
-              : isRouteInactive
-                ? "Marshrut active emas"
-                : (enabled ? "Joylashuvni o'chirish" : "Joylashuvni yoqish")}
-          </button>
+              boxShadow: '0 4px 14px rgba(16, 185, 129, 0.12)'
+            }}>
+              <span style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                background: '#10b981',
+                boxShadow: '0 0 10px #10b981',
+                display: 'inline-block'
+              }}></span>
+              <span>Joylashuv faol (Yo'ldasiz)</span>
+            </div>
+          ) : (
+            <button 
+              className="btn-primary" 
+              onClick={handleToggle}
+              disabled={checking}
+              style={{ 
+                backgroundColor: !hasRoute 
+                  ? '#94a3b8' 
+                  : isRouteInactive
+                    ? '#64748b'
+                    : 'var(--blue-primary)',
+                opacity: checking ? 0.7 : (!hasRoute || isRouteInactive ? 0.85 : 1),
+                cursor: !hasRoute ? 'not-allowed' : 'pointer',
+                boxShadow: (!hasRoute || isRouteInactive)
+                  ? 'none' 
+                  : '0 4px 14px rgba(0, 102, 255, 0.35)',
+                marginTop: '8px',
+                marginBottom: '4px',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
+            >
+              <Navigation size={18} fill="currentColor" style={{ transform: 'rotate(45deg)' }} />
+              {checking 
+                ? "Tekshirilmoqda..." 
+                : isRouteInactive
+                  ? "Marshrut active emas"
+                  : "Joylashuvni yoqish"}
+            </button>
+          )}
         </div>
       </div>
 

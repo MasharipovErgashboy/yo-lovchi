@@ -681,10 +681,10 @@ async def update_location(payload: DriverLocationUpdate):
     current_loc = get_driver_location(driver_id)
     was_active_on_work = bool(current_loc and current_loc.get("is_online") and current_loc.get("active_on_route"))
 
-    # Check distance deviation from assigned route
+    # Check distance deviation from assigned route (strictly 2 km = 2000 meters)
     if target_route_id and payload.latitude and payload.longitude:
         dist_meters = calculate_distance_to_route_polyline(payload.latitude, payload.longitude, target_route_id)
-        max_allowed = 3000.0 if was_active_on_work else 2000.0
+        max_allowed = 2000.0
         if dist_meters is not None and dist_meters > max_allowed:
             set_driver_offline(driver_id)
             if was_active_on_work:

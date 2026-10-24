@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { AlertTriangle, Navigation, MapPin, X, Volume2 } from 'lucide-react'
 import './App.css'
 import Header from './components/Header'
-import LocationToggle from './components/LocationToggle'
+import LocationToggle, { calculateMinDistanceToRoute } from './components/LocationToggle'
 import BottomNav from './components/BottomNav'
 import Messages from './components/Messages'
 import Profile from './components/Profile'
@@ -602,8 +602,19 @@ function App() {
 
       // Transmit to backend API ONLY when driver is strictly online
       if (isOnlineRef.current) {
-        // --- REAL-TIME STOP MP3 ANNOUNCEMENT ---
+        // Automatic deviation check: if driver moves > 2km from assigned route, automatically turn off location
         const currentRoute = assignedRouteRef.current || assignedRoute;
+        if (currentRoute) {
+          const distToRoute = calculateMinDistanceToRoute(lat, lng, currentRoute);
+          if (distToRoute > 2000) {
+            handleLocationToggle(false);
+            setDeviationAlert("Siz belgilangan marshrut chizig'idan 2 km dan ortiq uzoqlashdingiz. Marshrut chizig'iga qayting va ilovada Joylashuvingizni yoqing.");
+            setUnreadCount(prev => prev + 1);
+            return;
+          }
+        }
+
+        // --- REAL-TIME STOP MP3 ANNOUNCEMENT ---
         if (currentRoute && Array.isArray(currentRoute.stops) && currentRoute.stops.length > 0) {
           currentRoute.stops.forEach((stop) => {
             if (!stop || !stop.audio_url || typeof stop.lat !== 'number' || typeof stop.lng !== 'number') {
