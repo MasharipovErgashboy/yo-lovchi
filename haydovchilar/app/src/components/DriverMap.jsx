@@ -164,44 +164,73 @@ export default function DriverMap({
       ? assignedRoute.color 
       : '#0066FF';
 
-    const drawRouteOnMap = (pts) => {
+    const forwardColor = assignedRoute.arrow_color_forward || routeColor;
+    const backwardColor = assignedRoute.arrow_color_backward || '#10B981';
+
+    const drawRouteOnMap = (pts, retPts = []) => {
       const z = mapInstance.current ? mapInstance.current.getZoom() : 14;
       const w = getZoomWeights(z);
 
-      // Glow polyline
-      const glow = L.polyline(pts, {
-        color: routeColor,
-        weight: w.glow,
-        opacity: 0.25,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(layerGroup);
+      // 1. Draw Return Polyline (Qaytish yo'li, dashed)
+      if (retPts && retPts.length >= 2) {
+        L.polyline(retPts, {
+          color: backwardColor,
+          weight: w.glow,
+          opacity: 0.2,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(layerGroup);
 
-      // White outline
-      const outline = L.polyline(pts, {
-        color: '#ffffff',
-        weight: w.outline,
-        opacity: 0.95,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(layerGroup);
+        L.polyline(retPts, {
+          color: backwardColor,
+          weight: Math.max(3, w.main - 1),
+          opacity: 0.85,
+          dashArray: '6, 8',
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(layerGroup);
+      }
 
-      // Main line
-      const main = L.polyline(pts, {
-        color: routeColor,
-        weight: w.main,
-        opacity: 0.95,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(layerGroup);
+      // 2. Draw Forward Polyline (Borish yo'li, solid)
+      if (pts && pts.length >= 2) {
+        // Glow polyline
+        const glow = L.polyline(pts, {
+          color: forwardColor,
+          weight: w.glow,
+          opacity: 0.25,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(layerGroup);
 
-      routePolylinesRef.current = { glow, outline, main };
+        // White outline
+        const outline = L.polyline(pts, {
+          color: '#ffffff',
+          weight: w.outline,
+          opacity: 0.95,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(layerGroup);
+
+        // Main line
+        const main = L.polyline(pts, {
+          color: forwardColor,
+          weight: w.main,
+          opacity: 0.95,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(layerGroup);
+
+        routePolylinesRef.current = { glow, outline, main };
+      }
 
       // Fit bounds only if nav is not active and user has not interacted
       if (!navToStartActive && !userMovedMapRef.current) {
         try {
-          const bounds = L.latLngBounds(pts);
-          mapInstance.current.fitBounds(bounds, { padding: [40, 40] });
+          const allPts = [...(pts || []), ...(retPts || [])];
+          if (allPts.length >= 2) {
+            const bounds = L.latLngBounds(allPts);
+            mapInstance.current.fitBounds(bounds, { padding: [40, 40] });
+          }
         } catch (e) {}
       }
     };
@@ -237,8 +266,15 @@ export default function DriverMap({
       .addTo(layerGroup);
     });
 
-    if (Array.isArray(assignedRoute.polyline) && assignedRoute.polyline.length >= 2) {
-      drawRouteOnMap(assignedRoute.polyline);
+    const fPoly = Array.isArray(assignedRoute.polyline) && assignedRoute.polyline.length >= 2 
+      ? assignedRoute.polyline 
+      : [];
+    const rPoly = Array.isArray(assignedRoute.return_polyline) && assignedRoute.return_polyline.length >= 2 
+      ? assignedRoute.return_polyline 
+      : (fPoly.length >= 2 ? [...fPoly].reverse() : []);
+
+    if (fPoly.length >= 2) {
+      drawRouteOnMap(fPoly, rPoly);
     } else if (stops.length >= 2) {
       const stopsParam = stops.map(s => `${s.lng},${s.lat}`).join(';');
       const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${stopsParam}?overview=full&geometries=geojson`;
@@ -248,13 +284,15 @@ export default function DriverMap({
         .then(data => {
           if (data && data.routes && data.routes.length > 0) {
             const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-            drawRouteOnMap(coords);
+            drawRouteOnMap(coords, [...coords].reverse());
           } else {
-            drawRouteOnMap(stops.map(s => [Number(s.lat), Number(s.lng)]));
+            const sCoords = stops.map(s => [Number(s.lat), Number(s.lng)]);
+            drawRouteOnMap(sCoords, [...sCoords].reverse());
           }
         })
         .catch(() => {
-          drawRouteOnMap(stops.map(s => [Number(s.lat), Number(s.lng)]));
+          const sCoords = stops.map(s => [Number(s.lat), Number(s.lng)]);
+          drawRouteOnMap(sCoords, [...sCoords].reverse());
         });
     }
   }, [assignedRoute, navToStartActive]);

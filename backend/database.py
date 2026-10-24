@@ -177,6 +177,12 @@ def init_db():
             ) THEN
                 ALTER TABLE routes ADD COLUMN arrow_color_backward VARCHAR(50) DEFAULT '#10B981';
             END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'routes' AND column_name = 'return_polyline'
+            ) THEN
+                ALTER TABLE routes ADD COLUMN return_polyline JSONB DEFAULT '[]'::jsonb;
+            END IF;
         EXCEPTION
             WHEN OTHERS THEN NULL;
         END $$;
@@ -245,11 +251,32 @@ def init_db():
             completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
-    conn.commit()
-
-
-
-    # Seed superuser (yolovchi / yolovchi123)
+    # Backfill return_polyline for routes where empty
+    try:
+        cursor.execute("SELECT id, stops, polyline, return_polyline FROM routes;")
+        all_db_routes = cursor.fetchall()
+        for r_row in all_db_routes:
+            ret_poly = r_row.get("return_polyline")
+            if not ret_poly or ret_poly == '[]' or ret_poly == []:
+                r_id = r_row["id"]
+                r_stops = r_row.get("stops")
+                if isinstance(r_stops, str):
+                    try: r_stops = json.loads(r_stops)
+                    except: r_stops = []
+                r_poly = r_row.get("polyline")
+                if isinstance(r_poly, str):
+                    try: r_poly = json.loads(r_poly)
+                    except: r_poly = []
+                
+                _, _, gen_ret_poly = process_stops_and_polyline(r_stops or [], r_poly or [])
+                if gen_ret_poly:
+                    cursor.execute(
+                        "UPDATE routes SET return_polyline = %s WHERE id = %s;",
+                        (json.dumps(gen_ret_poly), r_id)
+                    )
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"Error backfilling return_polyline: {e}")
     pwd_hash = hash_password('yolovchi123')
     cursor.execute("""
         INSERT INTO users (username, password_hash, role, is_superuser)
@@ -860,8 +887,16 @@ def fetch_road_polyline(coords_lat_lng: List[List[float]]) -> List[List[float]]:
         logger.warning(f"OSRM road routing fallback: {e}")
     return coords_lat_lng
 
-def process_stops_and_polyline(stops: List[Any], polyline: Optional[List[Any]] = None) -> Tuple[List[Dict[str, Any]], List[List[float]]]:
-    """Processes stops array and generates/cleans polyline coordinates."""
+def process_stops_and_polyline(
+    stops: List[Any], 
+    polyline: Optional[List[Any]] = None,
+    return_polyline: Optional[List[Any]] = None
+) -> Tuple[List[Dict[str, Any]], List[List[float]], List[List[float]]]:
+    """
+    Processes stops array and generates/cleans forward and return polyline coordinates.
+    Forward line: Stop 1 -> Stop N via OSRM
+    Return line: Stop N -> Stop 1 via OSRM (automatic road driving path)
+    """
     processed_stops = []
     stop_points = []
 
@@ -898,7 +933,7 @@ def process_stops_and_polyline(stops: List[Any], polyline: Optional[List[Any]] =
         if parsed["lat"] is not None and parsed["lng"] is not None:
             stop_points.append([parsed["lat"], parsed["lng"]])
 
-    # If polyline is explicitly provided, validate it; otherwise fetch road polyline from stops
+    # 1. Forward polyline (Stop 1 -> Stop N)
     final_polyline = []
     if polyline and isinstance(polyline, list) and len(polyline) > 0:
         for pt in polyline:
@@ -912,7 +947,21 @@ def process_stops_and_polyline(stops: List[Any], polyline: Optional[List[Any]] =
     elif not final_polyline:
         final_polyline = stop_points
 
-    return processed_stops, final_polyline
+    # 2. Return polyline (Stop N -> Stop 1, automatic return line via OSRM)
+    final_return_polyline = []
+    if return_polyline and isinstance(return_polyline, list) and len(return_polyline) > 0:
+        for pt in return_polyline:
+            if isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                try:
+                    final_return_polyline.append([float(pt[0]), float(pt[1])])
+                except (ValueError, TypeError):
+                    pass
+    if not final_return_polyline and len(stop_points) >= 2:
+        final_return_polyline = fetch_road_polyline(list(reversed(stop_points)))
+    elif not final_return_polyline and final_polyline:
+        final_return_polyline = list(reversed(final_polyline))
+
+    return processed_stops, final_polyline, final_return_polyline
 
 def get_routes(is_active: Optional[bool] = None) -> List[Dict[str, Any]]:
     """Get all routes with active drivers count."""
@@ -950,6 +999,16 @@ def get_routes(is_active: Optional[bool] = None) -> List[Dict[str, Any]]:
                 row_dict["polyline"] = json.loads(row_dict["polyline"])
             except:
                 row_dict["polyline"] = []
+        if isinstance(row_dict.get("return_polyline"), str):
+            try:
+                row_dict["return_polyline"] = json.loads(row_dict["return_polyline"])
+            except:
+                row_dict["return_polyline"] = []
+        elif not row_dict.get("return_polyline") and row_dict.get("polyline"):
+            try:
+                row_dict["return_polyline"] = list(reversed(row_dict["polyline"]))
+            except:
+                row_dict["return_polyline"] = []
         
         row_dict["total_stops"] = len(row_dict.get("stops") or [])
         row_dict["active_buses"] = int(row_dict.get("active_buses") or 0)
@@ -985,6 +1044,17 @@ def get_route_by_id(route_id: int) -> Optional[Dict[str, Any]]:
             row_dict["polyline"] = json.loads(row_dict["polyline"])
         except:
             row_dict["polyline"] = []
+    if isinstance(row_dict.get("return_polyline"), str):
+        try:
+            row_dict["return_polyline"] = json.loads(row_dict["return_polyline"])
+        except:
+            row_dict["return_polyline"] = []
+    elif not row_dict.get("return_polyline") and row_dict.get("polyline"):
+        try:
+            row_dict["return_polyline"] = list(reversed(row_dict["polyline"]))
+        except:
+            row_dict["return_polyline"] = []
+
     row_dict["total_stops"] = len(row_dict.get("stops") or [])
     row_dict["active_buses"] = int(row_dict.get("active_buses") or 0)
     return row_dict
@@ -997,20 +1067,26 @@ def create_route(
     price: str = "3 000 so'm",
     stops: Optional[List[Any]] = None,
     polyline: Optional[List[Any]] = None,
+    return_polyline: Optional[List[Any]] = None,
     is_active: bool = True,
     arrow_color_forward: str = "#0066FF",
     arrow_color_backward: str = "#10B981",
     **kwargs
 ) -> Dict[str, Any]:
-    """Create a new route with parsed stops and polyline."""
-    processed_stops, processed_polyline = process_stops_and_polyline(stops or [], polyline)
+    """Create a new route with parsed stops, forward polyline, and automatic return polyline."""
+    processed_stops, processed_polyline, processed_return_polyline = process_stops_and_polyline(
+        stops or [], polyline, return_polyline
+    )
     
     dir_name = direction or name
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO routes (number, name, direction, color, price, stops, polyline, is_active, arrow_color_forward, arrow_color_backward, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        INSERT INTO routes (
+            number, name, direction, color, price, stops, polyline, return_polyline,
+            is_active, arrow_color_forward, arrow_color_backward, created_at, updated_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'), (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'))
         RETURNING *;
     """, (
         str(number),
@@ -1020,6 +1096,7 @@ def create_route(
         str(price),
         json.dumps(processed_stops),
         json.dumps(processed_polyline),
+        json.dumps(processed_return_polyline),
         bool(is_active),
         str(arrow_color_forward or "#0066FF"),
         str(arrow_color_backward or "#10B981")
@@ -1083,6 +1160,7 @@ def update_route(
     price: Optional[str] = None,
     stops: Optional[List[Any]] = None,
     polyline: Optional[List[Any]] = None,
+    return_polyline: Optional[List[Any]] = None,
     is_active: Optional[bool] = None,
     arrow_color_forward: Optional[str] = None,
     arrow_color_backward: Optional[str] = None,
@@ -1105,21 +1183,29 @@ def update_route(
     if stops is not None:
         target_stops = stops
         target_poly = polyline  # Re-route through all stops if polyline not explicitly passed
-        processed_stops, processed_poly = process_stops_and_polyline(target_stops, target_poly)
-    elif polyline is not None:
+        target_ret_poly = return_polyline
+        processed_stops, processed_poly, processed_ret_poly = process_stops_and_polyline(
+            target_stops, target_poly, target_ret_poly
+        )
+    elif polyline is not None or return_polyline is not None:
         target_stops = existing.get("stops", [])
-        processed_stops, processed_poly = process_stops_and_polyline(target_stops, polyline)
+        target_poly = polyline if polyline is not None else existing.get("polyline", [])
+        target_ret_poly = return_polyline if return_polyline is not None else existing.get("return_polyline", [])
+        processed_stops, processed_poly, processed_ret_poly = process_stops_and_polyline(
+            target_stops, target_poly, target_ret_poly
+        )
     else:
         processed_stops = existing.get("stops", [])
         processed_poly = existing.get("polyline", [])
+        processed_ret_poly = existing.get("return_polyline", [])
 
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE routes
         SET number = %s, name = %s, direction = %s, color = %s, price = %s,
-            stops = %s, polyline = %s, is_active = %s,
-            arrow_color_forward = %s, arrow_color_backward = %s, updated_at = CURRENT_TIMESTAMP
+            stops = %s, polyline = %s, return_polyline = %s, is_active = %s,
+            arrow_color_forward = %s, arrow_color_backward = %s, updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
         WHERE id = %s
         RETURNING id;
     """, (
@@ -1130,6 +1216,7 @@ def update_route(
         str(new_price),
         json.dumps(processed_stops),
         json.dumps(processed_poly),
+        json.dumps(processed_ret_poly),
         bool(new_is_active),
         str(new_arrow_forward or "#0066FF"),
         str(new_arrow_backward or "#10B981"),
@@ -1224,17 +1311,18 @@ def distance_to_segment(p_lat: float, p_lng: float, a_lat: float, a_lng: float, 
     return haversine_distance(p_lat, p_lng, closest_lat, closest_lng)
 
 def calculate_distance_to_route_polyline(lat: float, lng: float, route_id: int) -> Optional[float]:
-    """Calculate minimum distance in meters from (lat, lng) to the assigned route's polyline or stops."""
+    """Calculate minimum distance in meters from (lat, lng) to the assigned route's forward polyline, return polyline, or stops."""
     route = get_route_by_id(route_id)
     if not route:
         return None
 
     polyline = route.get("polyline")
+    return_polyline = route.get("return_polyline")
     stops = route.get("stops")
 
     min_dist = float('inf')
 
-    # 1. Check polyline
+    # 1. Check forward polyline
     if polyline and isinstance(polyline, list) and len(polyline) > 0:
         for i in range(len(polyline)):
             p = polyline[i]
@@ -1245,6 +1333,23 @@ def calculate_distance_to_route_polyline(lat: float, lng: float, route_id: int) 
                     min_dist = d
                 if i < len(polyline) - 1:
                     next_p = polyline[i + 1]
+                    if len(next_p) >= 2:
+                        n_lat, n_lng = float(next_p[0]), float(next_p[1])
+                        seg_d = distance_to_segment(lat, lng, p_lat, p_lng, n_lat, n_lng)
+                        if seg_d < min_dist:
+                            min_dist = seg_d
+
+    # 1b. Check return polyline
+    if return_polyline and isinstance(return_polyline, list) and len(return_polyline) > 0:
+        for i in range(len(return_polyline)):
+            p = return_polyline[i]
+            if len(p) >= 2:
+                p_lat, p_lng = float(p[0]), float(p[1])
+                d = haversine_distance(lat, lng, p_lat, p_lng)
+                if d < min_dist:
+                    min_dist = d
+                if i < len(return_polyline) - 1:
+                    next_p = return_polyline[i + 1]
                     if len(next_p) >= 2:
                         n_lat, n_lng = float(next_p[0]), float(next_p[1])
                         seg_d = distance_to_segment(lat, lng, p_lat, p_lng, n_lat, n_lng)

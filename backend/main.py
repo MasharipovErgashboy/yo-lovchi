@@ -44,7 +44,8 @@ from database import (
     get_dashboard_stats,
     record_driver_trip,
     calculate_distance_to_route_polyline,
-    get_driver_location
+    get_driver_location,
+    process_stops_and_polyline
 )
 from telegram_service import (
     send_approval_message,
@@ -137,6 +138,7 @@ class RouteCreate(BaseModel):
     price: Optional[str] = ""
     stops: Optional[List[Any]] = []
     polyline: Optional[List[List[float]]] = []
+    return_polyline: Optional[List[List[float]]] = []
     is_active: Optional[bool] = True
     arrow_color_forward: Optional[str] = "#0066FF"
     arrow_color_backward: Optional[str] = "#10B981"
@@ -149,9 +151,13 @@ class RouteUpdate(BaseModel):
     price: Optional[str] = None
     stops: Optional[List[Any]] = None
     polyline: Optional[List[List[float]]] = None
+    return_polyline: Optional[List[List[float]]] = None
     is_active: Optional[bool] = None
     arrow_color_forward: Optional[str] = None
     arrow_color_backward: Optional[str] = None
+
+class RoutePreviewRequest(BaseModel):
+    stops: List[Any] = []
 
 class AssignRouteRequest(BaseModel):
     route_id: Optional[int] = None
@@ -564,6 +570,23 @@ def get_route(route_id: int):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
     return route
 
+@app.post("/api/routes/preview-polyline")
+def preview_route_polylines(payload: RoutePreviewRequest):
+    """
+    Parses stop coordinates/URLs and generates forward and automatic return polylines via OSRM.
+    Used for live map preview in Admin Panel.
+    """
+    try:
+        processed_stops, forward_poly, return_poly = process_stops_and_polyline(payload.stops or [])
+        return {
+            "stops": processed_stops,
+            "polyline": forward_poly,
+            "return_polyline": return_poly
+        }
+    except Exception as e:
+        logger.error(f"Error in preview_route_polylines: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
 @app.post("/api/routes", status_code=status.HTTP_201_CREATED)
 def create_new_route(payload: RouteCreate):
     """Admin creates a new route (maximum 2 routes allowed)."""
@@ -582,6 +605,7 @@ def create_new_route(payload: RouteCreate):
             price=payload.price or "",
             stops=payload.stops or [],
             polyline=payload.polyline or [],
+            return_polyline=payload.return_polyline or [],
             is_active=payload.is_active if payload.is_active is not None else True,
             arrow_color_forward=payload.arrow_color_forward or "#0066FF",
             arrow_color_backward=payload.arrow_color_backward or "#10B981"
@@ -617,6 +641,7 @@ def update_existing_route(route_id: int, payload: RouteUpdate):
         price=payload.price,
         stops=payload.stops,
         polyline=payload.polyline,
+        return_polyline=payload.return_polyline,
         is_active=payload.is_active,
         arrow_color_forward=payload.arrow_color_forward,
         arrow_color_backward=payload.arrow_color_backward

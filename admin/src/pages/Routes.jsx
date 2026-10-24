@@ -4,6 +4,7 @@ import {
   Plus, Edit2, X, MapPin, Trash2, Check, ExternalLink, Loader2, 
   Navigation, Music, Volume2, Lock, Unlock, AlertTriangle, Sparkles, ShieldCheck 
 } from 'lucide-react';
+import RouteLiveMapPreview from '../components/RouteLiveMapPreview';
 import './PagesCommon.css';
 import './Routes.css';
 
@@ -36,6 +37,8 @@ export default function RoutesPage() {
   const [newRouteColor, setNewRouteColor] = useState('#3b82f6');
   const [arrowColorForward, setArrowColorForward] = useState('#0066FF');
   const [arrowColorBackward, setArrowColorBackward] = useState('#10B981');
+  const [calculatedForwardPoly, setCalculatedForwardPoly] = useState([]);
+  const [calculatedReturnPoly, setCalculatedReturnPoly] = useState([]);
   const [newStops, setNewStops] = useState([
     { name: '', raw: '', audio_url: null, audio_name: '' },
     { name: '', raw: '', audio_url: null, audio_name: '' }
@@ -71,6 +74,8 @@ export default function RoutesPage() {
     setNewRouteColor('#3b82f6');
     setArrowColorForward('#0066FF');
     setArrowColorBackward('#10B981');
+    setCalculatedForwardPoly([]);
+    setCalculatedReturnPoly([]);
     setNewStops([
       { name: '1-bekat (Bosh bekat)', raw: '', audio_url: null, audio_name: '' },
       { name: 'Oxirgi bekat', raw: '', audio_url: null, audio_name: '' }
@@ -110,6 +115,8 @@ export default function RoutesPage() {
     setNewRouteColor(route.color || '#3b82f6');
     setArrowColorForward(route.arrow_color_forward || '#0066FF');
     setArrowColorBackward(route.arrow_color_backward || '#10B981');
+    setCalculatedForwardPoly(route.polyline || []);
+    setCalculatedReturnPoly(route.return_polyline || []);
     
     // Normalize stops
     let formattedStops = [];
@@ -217,6 +224,8 @@ export default function RoutesPage() {
         color: newRouteColor,
         arrow_color_forward: arrowColorForward,
         arrow_color_backward: arrowColorBackward,
+        polyline: calculatedForwardPoly && calculatedForwardPoly.length >= 2 ? calculatedForwardPoly : undefined,
+        return_polyline: calculatedReturnPoly && calculatedReturnPoly.length >= 2 ? calculatedReturnPoly : undefined,
         stops: newStops.map((s, idx) => ({
           name: s.name && s.name.trim() !== '' ? s.name.trim() : `Bekat ${idx + 1}`,
           raw: s.raw.trim(),
@@ -421,6 +430,9 @@ export default function RoutesPage() {
                         </svg>
                         Kelmoqda: <strong style={{ color: route.arrow_color_backward || '#10B981' }}>{route.arrow_color_backward || '#10B981'}</strong>
                       </span>
+                      <span className="route-dir-badge" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                        <Sparkles size={11} /> Qaytish chizig'i: <strong>Avtomatik</strong>
+                      </span>
                     </div>
                   </div>
 
@@ -506,15 +518,17 @@ export default function RoutesPage() {
       {/* Add / Edit Route Modal */}
       {isAddModalOpen && typeof document !== 'undefined' && createPortal(
         <div className="modal-overlay" onClick={closeAddModal}>
-          <div className="modal-content glass-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '580px', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div className="modal-content glass-modal route-form-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '1120px', width: '95%', maxHeight: '92vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <h3>{editingRouteId ? 'Marshrutni tahrirlash' : 'Yangi marshrut yaratish'}</h3>
               <button className="close-btn" onClick={closeAddModal}><X size={24} /></button>
             </div>
             
             <form onSubmit={handleSaveRoute}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+              <div className="modal-body" style={{ padding: '20px 24px' }}>
+                <div className="route-modal-grid">
+                  <div className="route-modal-left">
+                    <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
                   <div style={{ flex: '1 1 120px' }}>
                     <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontSize: '13px' }}>Marshrut No</label>
                     <input 
@@ -814,15 +828,33 @@ export default function RoutesPage() {
                   </button>
                 </div>
               </div>
-              
-              <div className="modal-footer" style={{ marginTop: '18px' }}>
-                <button type="button" className="btn-reject" onClick={closeAddModal} disabled={isSaving}>
-                  Bekor qilish
-                </button>
-                <button type="submit" className="btn-approve" disabled={isSaving}>
-                  {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />} Saqlash
-                </button>
+
+              {/* Right Column: Live Map Preview with Forward and Return Line */}
+              <div className="route-modal-right" style={{ position: 'sticky', top: '10px' }}>
+                <RouteLiveMapPreview 
+                  stops={newStops}
+                  routeColor={newRouteColor}
+                  arrowColorForward={arrowColorForward}
+                  arrowColorBackward={arrowColorBackward}
+                  initialForwardPolyline={calculatedForwardPoly}
+                  initialReturnPolyline={calculatedReturnPoly}
+                  onPolylinesCalculated={(fPoly, rPoly) => {
+                    setCalculatedForwardPoly(fPoly);
+                    setCalculatedReturnPoly(rPoly);
+                  }}
+                />
               </div>
+            </div>
+          </div>
+          
+          <div className="modal-footer" style={{ marginTop: '18px' }}>
+            <button type="button" className="btn-reject" onClick={closeAddModal} disabled={isSaving}>
+              Bekor qilish
+            </button>
+            <button type="submit" className="btn-approve" disabled={isSaving}>
+              {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />} Saqlash
+            </button>
+          </div>
             </form>
           </div>
         </div>,

@@ -293,16 +293,22 @@ export default function MapComponent({
   // Parse polyline points of selected route for direction calculation
   const routePolyPoints = React.useMemo(() => {
     if (!selectedRoute) return [];
+    if (currentDirection === 'kelmoqda') {
+      if (Array.isArray(selectedRoute.return_polyline) && selectedRoute.return_polyline.length >= 2) {
+        return selectedRoute.return_polyline.map(p => [p[0], p[1]]);
+      }
+    }
     if (Array.isArray(selectedRoute.polyline) && selectedRoute.polyline.length >= 2) {
       return selectedRoute.polyline.map(p => [p[0], p[1]]);
     }
     if (Array.isArray(selectedRoute.stops)) {
-      return selectedRoute.stops
+      const sPts = selectedRoute.stops
         .filter(s => s && typeof s.lat === 'number' && typeof s.lng === 'number')
         .map(s => [s.lat, s.lng]);
+      return currentDirection === 'kelmoqda' ? [...sPts].reverse() : sPts;
     }
     return [];
-  }, [selectedRoute]);
+  }, [selectedRoute, currentDirection]);
 
   // Direction endpoint titles (e.g. 3-kichik noxiya - Qibray)
   const getStopName = (stop, fallback) => {
@@ -670,15 +676,22 @@ export default function MapComponent({
       });
     }
 
-    // Polyline points
+    // 1. Forward polyline points (Borish yo'li)
     let polyPoints = [];
     if (Array.isArray(selectedRoute.polyline) && selectedRoute.polyline.length >= 2) {
       polyPoints = selectedRoute.polyline.map(p => [p[0], p[1]]);
     } else {
-      // Fallback to stop lat/lngs if polyline empty
       polyPoints = stops
         .filter(s => s.lat && s.lng)
         .map(s => [s.lat, s.lng]);
+    }
+
+    // 2. Return polyline points (Qaytish yo'li - avtomatik)
+    let returnPolyPoints = [];
+    if (Array.isArray(selectedRoute.return_polyline) && selectedRoute.return_polyline.length >= 2) {
+      returnPolyPoints = selectedRoute.return_polyline.map(p => [p[0], p[1]]);
+    } else if (polyPoints.length >= 2) {
+      returnPolyPoints = [...polyPoints].reverse();
     }
 
     // Default sample path if no coordinates exist yet
@@ -701,23 +714,73 @@ export default function MapComponent({
       ];
     }
 
-    // 1. Draw glowing background polyline and main polyline
-    L.polyline(polyPoints, {
-      color: routeColor,
-      weight: 6,
-      opacity: 0.9,
-      lineCap: 'round',
-      lineJoin: 'round'
-    }).addTo(layerGroup);
+    const forwardColor = selectedRoute.arrow_color_forward || routeColor;
+    const backwardColor = selectedRoute.arrow_color_backward || '#10B981';
+    const isForwardActive = currentDirection === 'ketmoqda';
 
-    // Subtle outline / glow
-    L.polyline(polyPoints, {
-      color: routeColor,
-      weight: 12,
-      opacity: 0.25,
-      lineCap: 'round',
-      lineJoin: 'round'
-    }).addTo(layerGroup);
+    // 1A. Draw Return Line (Qaytish yo'li)
+    if (returnPolyPoints && returnPolyPoints.length >= 2) {
+      if (!isForwardActive) {
+        // Return line is ACTIVE direction
+        L.polyline(returnPolyPoints, {
+          color: backwardColor,
+          weight: 12,
+          opacity: 0.28,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(layerGroup);
+
+        L.polyline(returnPolyPoints, {
+          color: backwardColor,
+          weight: 6,
+          opacity: 0.95,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(layerGroup);
+      } else {
+        // Return line is BACKGROUND
+        L.polyline(returnPolyPoints, {
+          color: backwardColor,
+          weight: 4,
+          opacity: 0.55,
+          dashArray: '6, 8',
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(layerGroup);
+      }
+    }
+
+    // 1B. Draw Forward Line (Borish yo'li)
+    if (polyPoints && polyPoints.length >= 2) {
+      if (isForwardActive) {
+        // Forward line is ACTIVE direction
+        L.polyline(polyPoints, {
+          color: forwardColor,
+          weight: 12,
+          opacity: 0.28,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(layerGroup);
+
+        L.polyline(polyPoints, {
+          color: forwardColor,
+          weight: 6,
+          opacity: 0.95,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(layerGroup);
+      } else {
+        // Forward line is BACKGROUND
+        L.polyline(polyPoints, {
+          color: forwardColor,
+          weight: 4,
+          opacity: 0.55,
+          dashArray: '6, 8',
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(layerGroup);
+      }
+    }
 
     // 2. Draw Stop Markers along the line
     stops.forEach((stop, idx) => {
@@ -759,7 +822,8 @@ export default function MapComponent({
         d => d && d.route_id && selectedRoute && String(d.route_id) === String(selectedRoute.id) && d.is_online !== false
       );
       if ((!isUserLocationActive || !userLocation) && !targetVehicle && !hasLiveCars) {
-        const bounds = L.latLngBounds(polyPoints);
+        const allPoints = [...polyPoints, ...returnPolyPoints];
+        const bounds = L.latLngBounds(allPoints.length >= 2 ? allPoints : polyPoints);
         mapInstance.current.fitBounds(bounds, {
           paddingTopLeft: [40, 40],
           paddingBottomRight: [40, isSheetCollapsed ? 120 : 260]
@@ -767,7 +831,7 @@ export default function MapComponent({
       }
     }
 
-  }, [selectedRoute, currentStopIndex]);
+  }, [selectedRoute, currentStopIndex, currentDirection]);
 
   // 2. Real-time Live Drivers Marker Layer (Non-freezing, smooth setLatLng and instant removal)
   useEffect(() => {

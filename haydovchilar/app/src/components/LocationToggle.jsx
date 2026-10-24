@@ -38,7 +38,7 @@ export function calculateMinDistanceToRoute(driverLat, driverLng, route) {
   if (!route) return 0;
   let minDist = Infinity;
 
-  // Check polyline
+  // Check forward polyline
   if (Array.isArray(route.polyline) && route.polyline.length > 0) {
     for (let i = 0; i < route.polyline.length; i++) {
       const p = route.polyline[i];
@@ -47,6 +47,21 @@ export function calculateMinDistanceToRoute(driverLat, driverLng, route) {
 
       if (i < route.polyline.length - 1) {
         const nextP = route.polyline[i + 1];
+        const segDist = getDistanceToSegment(driverLat, driverLng, p[0], p[1], nextP[0], nextP[1]);
+        if (segDist < minDist) minDist = segDist;
+      }
+    }
+  }
+
+  // Check return polyline
+  if (Array.isArray(route.return_polyline) && route.return_polyline.length > 0) {
+    for (let i = 0; i < route.return_polyline.length; i++) {
+      const p = route.return_polyline[i];
+      const d = getDistanceMeters(driverLat, driverLng, p[0], p[1]);
+      if (d < minDist) minDist = d;
+
+      if (i < route.return_polyline.length - 1) {
+        const nextP = route.return_polyline[i + 1];
         const segDist = getDistanceToSegment(driverLat, driverLng, p[0], p[1], nextP[0], nextP[1]);
         if (segDist < minDist) minDist = segDist;
       }
