@@ -47,7 +47,8 @@ npm install --prefer-offline --no-audit || true
 
 # 7. PM2 servislarini qayta ishga tushirish (faqat yolovchi loyihasiga tegishli servislar)
 echo "🔄 PM2 servislari qayta ishga tushirilmoqda..."
-pm2 reload yolovchi-backend yolovchi-driver-bot yolovchi-passenger-bot --update-env || pm2 restart yolovchi-backend yolovchi-driver-bot yolovchi-passenger-bot || true
+BACKEND_URL="http://127.0.0.1:8008" NODE_ENV="production" pm2 restart yolovchi-driver-bot --update-env || true
+pm2 reload yolovchi-backend yolovchi-passenger-bot --update-env || pm2 restart yolovchi-backend yolovchi-passenger-bot || true
 
 # 8. Nginx sozlamasini tekshirish va yangilash
 echo "🌐 Nginx tekshirilmoqda..."

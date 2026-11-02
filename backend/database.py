@@ -497,7 +497,6 @@ def get_candidate_by_telegram_id(telegram_id: int) -> Optional[Dict[str, Any]]:
 def save_candidate(telegram_id: int, name: str, surname: str, phone: str, pending_message_id: Optional[int] = None, car_number: Optional[str] = None) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
-    now = datetime.now()
     
     final_car_number = (car_number or surname or "").strip()
     final_surname = (surname or car_number or "").strip()
@@ -508,17 +507,19 @@ def save_candidate(telegram_id: int, name: str, surname: str, phone: str, pendin
     if existing:
         cursor.execute("""
             UPDATE candidates 
-            SET name = %s, surname = %s, car_number = %s, phone = %s, status = 'pending', pending_message_id = %s, created_at = %s, updated_at = %s
+            SET name = %s, surname = %s, car_number = %s, phone = %s, status = 'pending', pending_message_id = %s,
+                created_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'),
+                updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
             WHERE telegram_id = %s
             RETURNING id;
-        """, (name, final_surname, final_car_number, phone, pending_message_id, now, now, telegram_id))
+        """, (name, final_surname, final_car_number, phone, pending_message_id, telegram_id))
         candidate_id = cursor.fetchone()["id"]
     else:
         cursor.execute("""
             INSERT INTO candidates (telegram_id, name, surname, car_number, phone, status, pending_message_id, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, 'pending', %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, 'pending', %s, (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'), (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent'))
             RETURNING id;
-        """, (telegram_id, name, final_surname, final_car_number, phone, pending_message_id, now, now))
+        """, (telegram_id, name, final_surname, final_car_number, phone, pending_message_id))
         candidate_id = cursor.fetchone()["id"]
         
     conn.commit()
@@ -529,12 +530,11 @@ def save_candidate(telegram_id: int, name: str, surname: str, phone: str, pendin
 def update_candidate_status(candidate_id: int, status: str) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
-    now = datetime.now()
     cursor.execute("""
         UPDATE candidates
-        SET status = %s, updated_at = %s
+        SET status = %s, updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tashkent')
         WHERE id = %s;
-    """, (status, now, candidate_id))
+    """, (status, candidate_id))
     conn.commit()
     cursor.close()
     conn.close()

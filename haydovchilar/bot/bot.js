@@ -7,7 +7,26 @@ const bot = new Telegraf(BOT_TOKEN);
 const driversDb = new Map(); // userId -> { name, surname, phone, status, pendingMessageId }
 
 const WEB_APP_URL = process.env.WEB_APP_URL || "https://driver.yolovchiapp.uz";
-const BACKEND_URL = process.env.BACKEND_URL || (process.env.NODE_ENV === 'production' ? "http://127.0.0.1:8008" : "http://localhost:8000");
+const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8008";
+
+// Robust backend fetch with fallback to port 8000 if 8008 fails
+async function backendFetch(endpoint, options = {}) {
+  const primaryUrl = BACKEND_URL;
+  try {
+    const res = await fetch(`${primaryUrl}${endpoint}`, options);
+    return res;
+  } catch (err) {
+    if (!process.env.BACKEND_URL && primaryUrl.includes("8008")) {
+      try {
+        const fallbackRes = await fetch(`http://127.0.0.1:8000${endpoint}`, options);
+        return fallbackRes;
+      } catch (fallbackErr) {
+        throw err;
+      }
+    }
+    throw err;
+  }
+}
 
 // Helper to safely delete messages
 async function safeDelete(ctx, messageId) {
@@ -118,6 +137,7 @@ const registrationWizard = new Scenes.WizardScene(
     if (!ctx.callbackQuery) return;
     
     if (ctx.callbackQuery.data === 'confirm') {
+      await ctx.answerCbQuery().catch(() => {});
       const { name, car_number, surname, phone } = ctx.wizard.state;
       const carNum = car_number || surname;
       
@@ -130,7 +150,7 @@ const registrationWizard = new Scenes.WizardScene(
 
       // Save to Python backend
       try {
-        await fetch(`${BACKEND_URL}/api/candidates`, {
+        const res = await backendFetch('/api/candidates', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -142,6 +162,14 @@ const registrationWizard = new Scenes.WizardScene(
             pending_message_id: pendingId
           })
         });
+
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          console.error(`[ERROR] Backend returned status ${res.status} when submitting candidate:`, errText);
+        } else {
+          const savedData = await res.json().catch(() => null);
+          console.log(`[SUCCESS] Candidate submitted successfully: ID ${savedData?.id}, TG ${ctx.from.id}, ${name}`);
+        }
       } catch (err) {
         console.error("Error submitting candidate to backend:", err);
       }
@@ -149,6 +177,7 @@ const registrationWizard = new Scenes.WizardScene(
       return ctx.scene.leave();
       
     } else if (ctx.callbackQuery.data === 'edit') {
+      await ctx.answerCbQuery().catch(() => {});
       await safeDelete(ctx, ctx.callbackQuery.message.message_id);
       return ctx.scene.enter('driver_registration');
     }
@@ -179,12 +208,12 @@ bot.start(async (ctx) => {
   let driver = null;
 
   try {
-    const res = await fetch(`${BACKEND_URL}/api/candidates/${userId}`);
+    const res = await backendFetch(`/api/candidates/${userId}`);
     if (res.ok) {
       driver = await res.json();
     }
   } catch (e) {
-    console.error("Backend fetch error:", e);
+    console.error("Backend fetch error in bot.start:", e);
   }
 
   // If user sends /start, clean up old bot message if possible
@@ -250,7 +279,7 @@ bot.on('text', async (ctx, next) => {
   if (ctx.scene?.current) return next();
   const userId = ctx.from.id;
   try {
-    const res = await fetch(`${BACKEND_URL}/api/candidates/${userId}`);
+    const res = await backendFetch(`/api/candidates/${userId}`);
     if (res.ok) {
       const driver = await res.json();
       if (driver && driver.status === 'approved') {
